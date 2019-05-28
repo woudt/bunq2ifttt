@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+        <title>bunq2IFTTT</title>
+        <style>
+            .row {
+                padding-top: 15px;
+                padding-bottom: 15px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="row">
+                <div class="col-12 col-md-9 col-lg-7 col-xl-6">
+                    <img src="/static/bunq2ifttt.png" class="img-fluid" alt="bunq2IFTTT">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    <b>Accounts configured for actions:</b> [<a href="/update_accounts">update</a>]<br>
+                    {% if accounts %}
+                    {% for acc in accounts %}{{ acc.iban }} {{ acc.description }}<br>
+                    {% if appmode == 'master' %}
+                    {% if acc.local %}
+                    - Internal payment:
+                      {% if acc.enableInternal %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_internal?iban={{ acc.iban }}&value={% if acc.enableInternal %}false{% else %}true{% endif %}">change</a>]
+                      <br>
+                    - Draft payment:
+                      {% if acc.enableDraft %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_draft?iban={{ acc.iban }}&value={% if acc.enableDraft %}false{% else %}true{% endif %}">change</a>]
+                      <br>
+                    - External payment:
+                      {% if enableexternal %}
+                      {% if acc.enableExternal %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_external?iban={{ acc.iban }}&value={% if acc.enableExternal %}false{% else %}true{% endif %}">change</a>]
+                      {% else %}
+                      [globally disabled]
+                      {% endif %}
+                      <br>
+                    {% endif %}
+                    {% endif %}
+                    - Mutation/Balance triggers:
+                      {% if acc.enableMutation %}enabled{% else %}disabled{% endif %}
+                      {% if bunqkeymode == 'API key' %}
+                      [<a href="/account_change_mutation?iban={{ acc.iban }}&value={% if acc.enableMutation %}false{% else %}true{% endif %}">change</a>]
+                      {% else %}
+                      [set by slave]
+                      {% endif %}
+                      {% if acc.enableMutation %}{{ acc.callbackMutation }}{% endif %}
+                      <br>
+                    - Request trigger:
+                      {% if acc.enableRequest %}enabled{% else %}disabled{% endif %}
+                      {% if bunqkeymode == 'API key' %}
+                      [<a href="/account_change_request?iban={{ acc.iban }}&value={% if acc.enableRequest %}false{% else %}true{% endif %}">change</a>]
+                      {% else %}
+                      [set by slave]
+                      {% endif %}
+                      {% if acc.enableRequest %}{{ acc.callbackRequest }}{% endif %}
+                      <br>
+                    {% if acc.callbackOther %}
+                    - Other callbacks:<br>
+                    {% for other in acc.callbackOther %}
+                    &nbsp;&nbsp;&nbsp;&nbsp;{{ other.cat }} {{ other.url }}
+                    [<a href="/remove_other_callback?iban={{ acc.iban }}&cat={{ other.cat }}&url={{ other.b64url }}">remove</a>]<br>
+                    {% endfor %}
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
+                    <br>
+                    {% if bunqkeymode == 'OAuth' %}Running in <b>master mode</b>.<br><br>{% endif %}
+                    {% if bunqkeymode == 'API key' %}
+                    {% if appmode == 'master' %}
+                    Running in <b>master mode</b>.<br>
+                    <a href="mode_slave" class="btn btn-primary">Switch to slave mode</a><br><br>
+                    {% endif %}
+                    {% if appmode == 'slave' %}
+                    Running in <b>slave mode</b>.<br>
+                    <a href="mode_master" class="btn btn-primary">Switch to master mode</a><br><br>
+                    <form action="/set_master_url" method="post">
+                        <div class="form-group">
+                            <label for="masterurl">URL of the master instance: {% if masterurl %}(current: {{masterurl}}){% endif %}</label>
+                            <input type="text" class="form-control" name="masterurl" id="masterurl" placeholder="Enter the new URL of the master instance here...">
+                        </div>
+                        <button type="submit" class="btn btn-primary">{% if masterurl %}Update{% else %}Submit{% endif %}</button>
+                    </form>
+                    <br>
+                    {% endif %}
+                    {% endif %}
+                    <form action="/set_ifttt_service_key" method="post">
+                        <div class="form-group">
+                            <label for="iftttkey">IFTTT Service key: ({% if iftttkeyset %}already set{% else %}not yet set{% endif %})</label>
+                            <input type="text" class="form-control" name="iftttkey" id="iftttkey" placeholder="Enter the IFTTT service key here...">
+                        </div>
+                        <button type="submit" class="btn btn-primary">{% if iftttkeyset %}Update{% else %}Submit{% endif %}</button>
+                    </form>
+                    <br>
+                    <form action="/set_bunq_oauth_api_key" method="post">
+                        <div class="form-group">
+                            <label for="bunqkey">Bunq OAuth or API key: ({% if bunqkeymode %}Current security level: {{ bunqkeymode }}{% else %}not yet set{% endif %})</label>
+                            <textarea class="form-control" name="bunqkey" id="bunqkey" placeholder="Enter the bunq OAuth client id/secret or API key here..." rows="2"></textarea>
+                        </div>
+                        {% if defaultallips %}
+                        <input type="hidden" name="allips" id="allips" value="on">
+                        {% else %}
+                        <div class="form-group form-check">
+                            <input type="checkbox" class="form-check-input" name="allips" id="allips">
+                            <label class="form-check-label" for="allips">Use wildcard ip address (LESS SECURE, only use this if you do not have a fixed ip address)</label>
+                        </div>
+                        {% endif %}
+                        <button type="submit" class="btn btn-primary">{% if bunqkeymode %}Update{% else %}Submit{% endif %}</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    </body>
+</html>

@@ -1,0 +1,4 @@
+cron:
+- description: "Clean seen index"
+  url: /cron/clean_seen
+  schedule: every 15 minutes
