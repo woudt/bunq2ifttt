@@ -3,8 +3,8 @@
 This app creates an interface between the [bunq](https://www.bunq.com/) 
 banking API and [IFTTT](https://ifttt.com/).
 
-Create your own private service on the [IFTTT Platform]
-(https://platform.ifttt.com/) and self-host the bunq2IFTTT app,
+Create your own private service on the [IFTTT
+Platform](https://platform.ifttt.com/) and self-host the bunq2IFTTT app,
 e.g. in [Google App Engine](https://cloud.google.com/appengine/).
 
 Features are:
