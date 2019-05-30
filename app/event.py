@@ -231,49 +231,43 @@ def check_types(item, fields):
 def check_comparators(item, fields):
     """ Check the comparison fields for a trigger """
     result = True
-    if "amount_comparator" in fields and fields["amount_value"] != "":
+    if "amount_comparator" in fields:
         result &= check_field_num(item["amount"],
                                   fields["amount_comparator"],
                                   fields["amount_value"])
-    if "amount_comparator_2" in fields and fields["amount_value_2"] != "":
+    if "amount_comparator_2" in fields:
         result &= check_field_num(item["amount"],
                                   fields["amount_comparator_2"],
                                   fields["amount_value_2"])
-    if "balance_comparator" in fields and fields["balance_value"] != "":
+    if "balance_comparator" in fields:
         result &= check_field_num(item["balance"],
                                   fields["balance_comparator"],
                                   fields["balance_value"])
-    if "balance_comparator_2" in fields and fields["balance_value_2"] != "":
+    if "balance_comparator_2" in fields:
         result &= check_field_num(item["balance"],
                                   fields["balance_comparator_2"],
                                   fields["balance_value_2"])
-    if "counterparty_name_comparator" in fields \
-    and fields["counterparty_name_value"] != "":
+    if "counterparty_name_comparator" in fields:
         result &= check_field_str(item["counterparty_name"],
                                   fields["counterparty_name_comparator"],
                                   fields["counterparty_name_value"])
-    if "counterparty_name_comparator_2" in fields \
-    and fields["counterparty_name_value_2"] != "":
+    if "counterparty_name_comparator_2" in fields:
         result &= check_field_str(item["counterparty_name"],
                                   fields["counterparty_name_comparator_2"],
                                   fields["counterparty_name_value_2"])
-    if "counterparty_account_comparator" in fields \
-    and fields["counterparty_account_value"] != "":
+    if "counterparty_account_comparator" in fields:
         result &= check_field_str(item["counterparty_account"],
                                   fields["counterparty_account_comparator"],
                                   fields["counterparty_account_value"])
-    if "counterparty_account_comparator_2" in fields \
-    and fields["counterparty_account_value_2"] != "":
+    if "counterparty_account_comparator_2" in fields:
         result &= check_field_str(item["counterparty_account"],
                                   fields["counterparty_account_comparator"],
                                   fields["counterparty_account_value_2"])
-    if "description_comparator" in fields \
-    and fields["description_value"] != "":
+    if "description_comparator" in fields:
         result &= check_field_str(item["description"],
                                   fields["description_comparator"],
                                   fields["description_value"])
-    if "description_comparator_2" in fields \
-    and fields["description_value_2"] != "":
+    if "description_comparator_2" in fields:
         result &= check_field_str(item["description"],
                                   fields["description_comparator_2"],
                                   fields["description_value_2"])
@@ -282,7 +276,9 @@ def check_comparators(item, fields):
 def check_field_num(orig, comparator, target):
     """ Check a numeric field """
     result = False
-    if comparator == "equal" and float(orig) == float(target):
+    if comparator == "ignore":
+        result = True
+    elif comparator == "equal" and float(orig) == float(target):
         result = True
     elif comparator == "not_equal" and float(orig) != float(target):
         result = True
@@ -307,7 +303,9 @@ def check_field_str(orig, comparator, target):
                       "in_nc", "not_in_nc"]:
         orig = orig.casefold()
         target = target.casefold()
-    if comparator in ["equal", "equal_nc"] and orig == target:
+    if comparator == "ignore":
+        result = True
+    elif comparator in ["equal", "equal_nc"] and orig == target:
         result = True
     elif comparator in ["not_equal", "not_equal_nc"] and orig != target:
         result = True

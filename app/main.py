@@ -435,6 +435,7 @@ def ifttt_comparator_numeric_options():
         return errmsg, 401
 
     data = {"data": [
+        {"value": "ignore", "label": "ignore"},
         {"value": "equal", "label": "equal to"},
         {"value": "not_equal", "label": "not equal to"},
         {"value": "above", "label": "above"},
@@ -477,6 +478,7 @@ def ifttt_comparator_alpha_options():
         return errmsg, 401
 
     data = {"data": [
+        {"value": "ignore", "label": "ignore"},
         {"value": "equal", "label": "is equal to"},
         {"value": "not_equal", "label": "is not equal to"},
         {"value": "cont", "label": "contains"},
