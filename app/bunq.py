@@ -56,7 +56,8 @@ def install(token, name=NAME, allips=False):
         token (str): the API key as provided by the app or the token returned
                      from the OAuth token exchange (by calling the v1/token)
     """
-    global _ACCESS_TOKEN, _INSTALL_TOKEN, _SERVER_KEY, _PRIVATE_KEY
+    global _ACCESS_TOKEN, _INSTALL_TOKEN, _SESSION_TOKEN, \
+           _SERVER_KEY, _PRIVATE_KEY
     try:
         _ACCESS_TOKEN = token
         print("[bunq] Generating new private key...")
