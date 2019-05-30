@@ -3,14 +3,18 @@
 This app creates an interface between the [bunq](https://www.bunq.com/) 
 banking API and [IFTTT](https://ifttt.com/).
 
+Create your own private service on the [IFTTT Platform]
+(https://platform.ifttt.com/) and self-host the bunq2IFTTT app,
+e.g. in [Google App Engine](https://cloud.google.com/appengine/).
+
 Features are:
 - Real time triggers on mutations, balances and incoming requests
 - The ability to make (draft) payments
-- Security oriented, using OAuth where possible and by separating higher 
-  access in master/slave mode
+- Security oriented, using OAuth where possible and by separating the API key
+  in a separate instance using master/slave mode where it is really needed
 
-See the [Wiki](https://github.com/woudt/bunq2ifttt/wiki) page for installation
-and usage instructions.
+See the [Wiki page](https://github.com/woudt/bunq2ifttt/wiki) for [installation
+and usage instructions](https://github.com/woudt/bunq2ifttt/wiki).
 
 This is [open source](https://github.com/woudt/bunq2ifttt/blob/master/LICENSE) 
 software, which you can use free of charge (but please note the disclaimer 
