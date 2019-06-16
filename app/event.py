@@ -62,8 +62,8 @@ def bunq_callback_request():
         for account in ["ANY", iban]:
             for trigger in storage.query("trigger_request",
                                          "account", "=", account):
-                if check_fields(item, trigger["fields"]):
-                    ident = trigger["identity"]
+                ident = trigger["identity"]
+                if check_fields("request", ident, item, trigger["fields"]):
                     triggerids.append(ident)
                     storage.store("request_"+ident, metaid, {"value": item})
         print("[bunqcb_request] Matched triggers:", json.dumps(triggerids))
@@ -123,16 +123,23 @@ def bunq_callback_mutation():
         for account in ["ANY", iban]:
             for trigger in storage.query("trigger_mutation",
                                          "account", "=", account):
-                if check_fields(item, trigger["fields"]):
-                    ident = trigger["identity"]
+                ident = trigger["identity"]
+                if check_fields("mutation", ident, item, trigger["fields"]):
                     triggerids_1.append(ident)
                     storage.store("mutation_"+ident, metaid, {"value": item})
             for trigger in storage.query("trigger_balance",
                                          "account", "=", account):
-                if check_fields(item, trigger["fields"]):
-                    ident = trigger["identity"]
-                    triggerids_2.append(ident)
-                    storage.store("balance_"+ident, metaid, {"value": item})
+                ident = trigger["identity"]
+                if check_fields("balance", ident, item, trigger["fields"]):
+                    if not trigger["last"]:
+                        triggerids_2.append(ident)
+                        storage.store("balance_"+ident, metaid,
+                                      {"value": item})
+                        trigger["last"] = True
+                        storage.store("trigger_balance", ident, trigger)
+                elif trigger["last"]:
+                    trigger["last"] = False
+                    storage.store("trigger_balance", ident, trigger)
         print("Matched mutation triggers:", json.dumps(triggerids_1))
         print("Matched balance triggers:", json.dumps(triggerids_2))
         data = {"data": []}
@@ -211,9 +218,13 @@ def counterparty_account(payment):
         ctp_account = "Other"
     return ctp_account
 
-def check_fields(item, fields):
+def check_fields(triggertype, triggerid, item, fields):
     """ Check the conditional fields for a trigger """
-    return check_types(item, fields) and check_comparators(item, fields)
+    try:
+        return check_types(item, fields) and check_comparators(item, fields)
+    except Exception:
+        print("Error in {} trigger {}".format(triggertype, triggerid))
+        traceback.print_exc()
 
 def check_types(item, fields):
     """ Check the mutation type fields for a trigger """
@@ -261,7 +272,7 @@ def check_comparators(item, fields):
                                   fields["counterparty_account_value"])
     if "counterparty_account_comparator_2" in fields:
         result &= check_field_str(item["counterparty_account"],
-                                  fields["counterparty_account_comparator"],
+                                  fields["counterparty_account_comparator_2"],
                                   fields["counterparty_account_value_2"])
     if "description_comparator" in fields:
         result &= check_field_str(item["description"],
@@ -315,7 +326,8 @@ def check_field_str(orig, comparator, target):
         result = True
     elif comparator in ["in", "in_nc"] and orig in json.loads(target):
         result = True
-    elif comparator in ["not_in", "in_nc"] and orig not in json.loads(target):
+    elif comparator in ["not_in", "not_in_nc"] and orig not in \
+                                                   json.loads(target):
         result = True
     return result
 
@@ -515,11 +527,13 @@ def trigger_balance():
         entity = storage.retrieve("trigger_balance", identity)
         if entity is not None:
             if entity["account"] != account or \
-                    json.dumps(entity["fields"]) != fieldsstr:
+                    json.dumps(entity["fields"]) != fieldsstr or \
+                    "last" not in entity:
                 storage.store("trigger_balance", identity, {
                     "account": account,
                     "identity": identity,
-                    "fields": fields
+                    "fields": fields,
+                    "last": False
                 })
                 print("[trigger_balance] updating trigger {} {}"
                       .format(account, fieldsstr))
@@ -527,7 +541,8 @@ def trigger_balance():
             storage.store("trigger_balance", identity, {
                 "account": account,
                 "identity": identity,
-                "fields": fields
+                "fields": fields,
+                "last": False
             })
             storage.store("balance_"+identity, "0", {"value": {
                 "created_at": "2018-01-05T11:25:15+00:00",
