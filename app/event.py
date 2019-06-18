@@ -32,13 +32,13 @@ def bunq_callback_request():
         if data["NotificationUrl"]["event_type"] != "REQUEST_RESPONSE_CREATED":
             print("[bunqcb_request] ignoring {} event"
                   .format(data["NotificationUrl"]["event_type"]))
-            return ""
+            return 200
 
         obj = data["NotificationUrl"]["object"]["RequestResponse"]
         metaid = obj["id"]
         if storage.seen("seen_request", metaid):
             print("[bunqcb_request] duplicate transaction")
-            return ""
+            return 200
 
         iban = obj["alias"]["iban"]
         item = {
@@ -86,7 +86,9 @@ def bunq_callback_request():
     except Exception:
         traceback.print_exc()
         print("[bunqcb_request] ERROR during handling bunq callback")
-    return ""
+        return 500
+
+    return 200
 
 def bunq_callback_mutation():
     """ Handle bunq callbacks of type MUTATION """
@@ -97,7 +99,7 @@ def bunq_callback_mutation():
         metaid = payment["id"]
         if storage.seen("seen_mutation", metaid):
             print("[bunqcb_mutation] duplicate transaction")
-            return ""
+            return 200
 
         iban = payment["alias"]["iban"]
         item = {
@@ -163,8 +165,9 @@ def bunq_callback_mutation():
     except Exception:
         traceback.print_exc()
         print("[bunqcb_mutation] ERROR during handling bunq callback")
+        return 500
 
-    return ""
+    return 200
 
 
 ###############################################################################

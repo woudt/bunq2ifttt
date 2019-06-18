@@ -621,13 +621,13 @@ def ifttt_account_options(include_any, local, enable_key):
 @app.route("/bunq2ifttt_mutation", methods=["POST"])
 def bunq2ifttt_mutation():
     """ Callback for bunq MUTATION events """
-    return event.bunq_callback_mutation()
+    return "", event.bunq_callback_mutation()
 
 @app.route("/bunq_callback_request", methods=["POST"])
 @app.route("/bunq2ifttt_request", methods=["POST"])
 def bunq2ifttt_request():
     """ Callback for bunq REQUEST events """
-    return event.bunq_callback_request()
+    return "", event.bunq_callback_request()
 
 
 ###############################################################################
