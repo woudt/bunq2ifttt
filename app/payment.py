@@ -27,6 +27,10 @@ def create_payment_message(internal, fields):
             print("[action_payment] ERROR: "+errmsg)
             return {"errors": [{"status": "SKIP", "message": errmsg}]}
 
+    # strip spaces from account numbers
+    fields["source_account"] = fields["source_account"].replace(" ", "")
+    fields["target_account"] = fields["target_account"].replace(" ", "")
+
     # check amount
     try:
         amount = float(fields["amount"])
