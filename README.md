@@ -16,6 +16,10 @@ Features are:
 See the [Wiki page](https://github.com/woudt/bunq2ifttt/wiki) for [installation
 and usage instructions](https://github.com/woudt/bunq2ifttt/wiki).
 
+Also, see the [Changelog](https://github.com/woudt/bunq2ifttt/wiki/Changelog)
+if you have installed a previous version to see what is changed and if there
+are any specific upgrade instructions.
+
 This is [open source](https://github.com/woudt/bunq2ifttt/blob/master/LICENSE) 
 software, which you can use free of charge (but please note the disclaimer 
 below). Feel free to [buy me a beer](https://bunq.me/bunq2IFTTT) though ;)
