@@ -117,6 +117,15 @@ def retrieve(kind, index):
             return data
     return None
 
+
+def get_value(kind, index):
+    """ Retrieve a previously stored value """
+    data = retrieve(kind, index)
+    if data is not None:
+        data = data["value"]
+    return data
+
+
 def store(kind, index, value):
     """ Store a dict """
     index = str(index)
@@ -131,6 +140,34 @@ def store(kind, index, value):
         fname += os.sep + str(index)
         with open(fname, "w") as fil:
             fil.write(json.dumps(value))
+
+
+def store_large(kind, index, value):
+    """ Store a large (not indexed) value """
+    index = str(index)
+    if USE_GOOGLE_DATASTORE:
+        entity = datastore.Entity(key=DSCLIENT.key(kind, index),
+                                  exclude_from_indexes=['value'])
+        entity["value"] = json.dumps(value)
+        DSCLIENT.put(entity)
+    else:
+        fname = "db" + os.sep + str(kind)
+        os.makedirs(fname, exist_ok=True)
+        fname += os.sep + str(index)
+        with open(fname, "w") as fil:
+            fil.write(json.dumps({"value": value}))
+
+
+def insert_value_maxsize(kind, index, value, maxsize):
+    """ Add a value to the beginning of a stored array, keeping a given maximum
+        number of records. """
+    values = get_value(kind, index)
+    if values is None:
+        values = []
+    values.insert(0, value)
+    values = values[:maxsize]
+    store_large(kind, index, values)
+
 
 def remove(kind, index):
     """ Remove the given record """

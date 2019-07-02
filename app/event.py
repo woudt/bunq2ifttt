@@ -65,7 +65,8 @@ def bunq_callback_request():
                 ident = trigger["identity"]
                 if check_fields("request", ident, item, trigger["fields"]):
                     triggerids.append(ident)
-                    storage.store("request_"+ident, metaid, {"value": item})
+                    storage.insert_value_maxsize("trigger_request",
+                                                 ident+"_t", item, 50)
         print("[bunqcb_request] Matched triggers:", json.dumps(triggerids))
         if triggerids:
             data = {"data": []}
@@ -128,15 +129,16 @@ def bunq_callback_mutation():
                 ident = trigger["identity"]
                 if check_fields("mutation", ident, item, trigger["fields"]):
                     triggerids_1.append(ident)
-                    storage.store("mutation_"+ident, metaid, {"value": item})
+                    storage.insert_value_maxsize("trigger_mutation",
+                                                 ident+"_t", item, 50)
             for trigger in storage.query("trigger_balance",
                                          "account", "=", account):
                 ident = trigger["identity"]
                 if check_fields("balance", ident, item, trigger["fields"]):
                     if not trigger["last"]:
                         triggerids_2.append(ident)
-                        storage.store("balance_"+ident, metaid,
-                                      {"value": item})
+                        storage.insert_value_maxsize("trigger_balance",
+                                                     ident+"_t", item, 50)
                         trigger["last"] = True
                         storage.store("trigger_balance", ident, trigger)
                 elif trigger["last"]:
@@ -386,36 +388,15 @@ def trigger_mutation():
                 "identity": identity,
                 "fields": fields
             })
-            storage.store("mutation_"+identity, "0", {"value": {
-                "created_at": "2018-01-05T11:25:15+00:00",
-                "date": "2018-01-05",
-                "type": "MANUAL",
-                "amount": "0.00",
-                "balance": "0.00",
-                "account": account,
-                "counterparty_account": "NL11BANK1111111111",
-                "counterparty_name": "Dummy Transaction",
-                "description": "This is a dummy transaction",
-                "payment_id": "123e4567-e89b-12d3-a456-426655440001",
-                "meta": {
-                    "id": "0",
-                    "timestamp": "1515151515"
-                }
-            }})
             print("[trigger_mutation] storing new trigger {} {}"
                   .format(account, fieldsstr))
 
-        transactions = []
-        for entity in storage.query_all("mutation_" + identity):
-            entity["value"]["created_at"] = arrow.get(\
-                entity["value"]["created_at"]).to(timezone).isoformat()
-            transactions.append(entity["value"])
-        transactions = sorted(transactions,
-                              key=lambda k: -int(k["meta"]["timestamp"]))
-
-        if len(transactions) > 50:
-            for trans in transactions[50:]:
-                storage.remove("mutation_"+identity, str(trans["meta"]["id"]))
+        transactions = storage.get_value("trigger_mutation", identity+"_t")
+        if transactions is None:
+            transactions = []
+        for trans in transactions:
+            trans["created_at"] = arrow.get(trans["created_at"])\
+                                  .to(timezone).isoformat()
 
         print("[trigger_mutation] Found {} transactions"
               .format(len(transactions)))
@@ -547,29 +528,15 @@ def trigger_balance():
                 "fields": fields,
                 "last": False
             })
-            storage.store("balance_"+identity, "0", {"value": {
-                "created_at": "2018-01-05T11:25:15+00:00",
-                "account": account,
-                "balance": "0.00",
-                "meta": {
-                    "id": "0",
-                    "timestamp": "1515151515"
-                }
-            }})
             print("[trigger_balance] storing new trigger {} {}"
                   .format(account, fieldsstr))
 
-        transactions = []
-        for entity in storage.query_all("balance_" + identity):
-            entity["value"]["created_at"] = arrow.get(\
-                entity["value"]["created_at"]).to(timezone).isoformat()
-            transactions.append(entity["value"])
-        transactions = sorted(transactions,
-                              key=lambda k: -int(k["meta"]["timestamp"]))
-
-        if len(transactions) > 50:
-            for trans in transactions[50:]:
-                storage.remove("balance_"+identity, str(trans["meta"]["id"]))
+        transactions = storage.get_value("trigger_mutation", identity+"_t")
+        if transactions is None:
+            transactions = []
+        for trans in transactions:
+            trans["created_at"] = arrow.get(trans["created_at"])\
+                                  .to(timezone).isoformat()
 
         print("[trigger_balance] Found {} transactions"
               .format(len(transactions)))
@@ -677,34 +644,15 @@ def trigger_request():
                 "identity": identity,
                 "fields": fields
             })
-            storage.store("request_"+identity, "0", {"value": {
-                "created_at": "2018-01-05T11:25:15+00:00",
-                "date": "2018-01-05",
-                "amount": "0.00",
-                "account": account,
-                "counterparty_account": "NL11BANK1111111111",
-                "counterparty_name": "Dummy Transaction",
-                "description": "This is a dummy transaction",
-                "request_id": "123e4567-e89b-12d3-a456-426655440001",
-                "meta": {
-                    "id": "0",
-                    "timestamp": "1515151515"
-                }
-            }})
             print("[trigger_request] storing new trigger {} {}"
                   .format(account, fieldsstr))
 
-        transactions = []
-        for entity in storage.query_all("request_" + identity):
-            entity["value"]["created_at"] = arrow.get(\
-                entity["value"]["created_at"]).to(timezone).isoformat()
-            transactions.append(entity["value"])
-        transactions = sorted(transactions,
-                              key=lambda k: -int(k["meta"]["timestamp"]))
-
-        if len(transactions) > 50:
-            for trans in transactions[50:]:
-                storage.remove("request_"+identity, str(trans["meta"]["id"]))
+        transactions = storage.get_value("trigger_mutation", identity+"_t")
+        if transactions is None:
+            transactions = []
+        for trans in transactions:
+            trans["created_at"] = arrow.get(trans["created_at"])\
+                                  .to(timezone).isoformat()
 
         print("[trigger_request] Found {} transactions"
               .format(len(transactions)))
