@@ -251,7 +251,7 @@ def check_ifttt_service_key():
     if "IFTTT-Service-Key" not in request.headers or \
             request.headers["IFTTT-Service-Key"] \
             != util.get_ifttt_service_key():
-        return json.dumps({"errors": [{"message": "Invalid key"}]})
+        return json.dumps({"errors": [{"message": "Invalid IFTTT key"}]})
     return None
 
 
