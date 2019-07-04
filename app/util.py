@@ -208,7 +208,7 @@ def update_master_from_slave(url_base):
                             data=json.dumps(data),
                             headers=headers)
         if req.status_code != 200:
-            print("Callback failed:", req.status_code, req.text)
+            print("Update master failed:", req.status_code, req.text)
             return False
     return True
 
