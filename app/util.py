@@ -330,7 +330,10 @@ def process_bunq_accounts_callback(accounts):
                 acc["enableRequest"] = acc2["enableRequest"]
                 acc["callbackMutation"] = acc2["callbackMutation"]
                 acc["callbackRequest"] = acc2["callbackRequest"]
-                acc["callbackOther"] = acc2["callbackOther"]
+                if "callbackOther" in acc2:
+                    acc["callbackOther"] = acc2["callbackOther"]
+                else:
+                    acc["callbackOther"] = []
                 storage.store("account_callback", acc["iban"], {"value": acc})
         if not found:
             # new account
