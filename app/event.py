@@ -531,7 +531,7 @@ def trigger_balance():
             print("[trigger_balance] storing new trigger {} {}"
                   .format(account, fieldsstr))
 
-        transactions = storage.get_value("trigger_mutation", identity+"_t")
+        transactions = storage.get_value("trigger_balance", identity+"_t")
         if transactions is None:
             transactions = []
         for trans in transactions:
@@ -647,7 +647,7 @@ def trigger_request():
             print("[trigger_request] storing new trigger {} {}"
                   .format(account, fieldsstr))
 
-        transactions = storage.get_value("trigger_mutation", identity+"_t")
+        transactions = storage.get_value("trigger_request", identity+"_t")
         if transactions is None:
             transactions = []
         for trans in transactions:
