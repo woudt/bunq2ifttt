@@ -16,7 +16,6 @@ import bunq
 import storage
 
 # Use global variables as in-memory cache mechanisms
-_SESSION_COOKIE = None
 _IFTTT_SERVICE_KEY = None
 _BUNQ_ACCOUNTS_LOCAL = None
 _BUNQ_ACCOUNTS_CALLBACK = None
@@ -36,17 +35,13 @@ def get_external_payment_enabled():
 
 def get_session_cookie():
     """ Return the users session cookie """
-    global _SESSION_COOKIE
-    if _SESSION_COOKIE is None:
-        entity = storage.retrieve("config", "session_cookie")
-        if entity is not None:
-            _SESSION_COOKIE = entity["value"]
-    return _SESSION_COOKIE
+    entity = storage.retrieve("config", "session_cookie")
+    if entity is not None:
+        return entity["value"]
+    return None
 
 def save_session_cookie(value):
     """ Save the users session cookie """
-    global _SESSION_COOKIE
-    _SESSION_COOKIE = value
     storage.store("config", "session_cookie", {"value": value})
 
 
