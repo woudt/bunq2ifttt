@@ -198,16 +198,16 @@ def session_request(method, endpoint, data=None):
     # This handles an edge case where multiple instances of this code are
     # active and this one has an out of date session key in memory
     if isinstance(result, dict) and "Error" in result and \
-            result["Error"][0]["error_description"] \
-            == "Insufficient authorisation.":
+            result["Error"][0]["error_description"] in \
+            ["Insufficient authorisation.", "Insufficient authentication."]:
         newtoken = get_session_token(force=True)
         if oldtoken is not None and newtoken != oldtoken:
             result = request(method, endpoint, data)
     # This handles the normal case, where the session token has expired and
     # needs to be refreshed
     if isinstance(result, dict) and "Error" in result and \
-            result["Error"][0]["error_description"] \
-            == "Insufficient authorisation.":
+            result["Error"][0]["error_description"] in \
+            ["Insufficient authorisation.", "Insufficient authentication."]:
         refresh_session_token()
         result = request(method, endpoint, data)
     return result
