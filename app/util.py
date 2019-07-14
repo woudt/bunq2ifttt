@@ -257,7 +257,6 @@ def update_bunq_accounts():
                              "url": url,
                              "b64url": base64.urlsafe_b64encode(\
                                  url.encode("utf-8")).decode("ascii")})
-            print(len(accinfo["callbackOther"]))
             accounts_callback.append(accinfo)
 
     process_bunq_accounts_local(accounts_local)
