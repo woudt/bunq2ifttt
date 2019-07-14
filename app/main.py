@@ -8,6 +8,7 @@ import os
 from flask import Flask, request, render_template
 
 import auth
+import card
 import event
 import payment
 import storage
@@ -380,6 +381,10 @@ def ifttt_test_setup():
                         "target_name": "John Doe",
                         "description": "x",
                     },
+                    "bunq_change_card_account": {
+                        "card": "x",
+                        "account": test_account,
+                    },
                 },
                 "actionRecordSkipping": {
                     "bunq_internal_payment": {
@@ -580,6 +585,11 @@ def ifttt_account_options_external():
     """ Option values for draft payment source account selection"""
     return ifttt_account_options(False, True, "enableExternal")
 
+@app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
+           "account/options", methods=["POST"])
+def ifttt_account_options_change_card():
+    """ Option values for change card account selection"""
+    return ifttt_account_options(False, True, None)
 
 def ifttt_account_options(include_any, local, enable_key):
     """ Option values for account selection """
@@ -611,6 +621,16 @@ def ifttt_account_options(include_any, local, enable_key):
                 "value": acc["iban"]
             })
     return json.dumps(data)
+
+
+@app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
+           "card/options", methods=["POST"])
+def ifttt_card_options():
+    """ Option values for card selection"""
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return json.dumps({"data": card.get_bunq_cards()})
 
 
 ###############################################################################
@@ -713,6 +733,19 @@ def ifttt_draft_payment():
     if errmsg:
         return errmsg, 401
     return payment.ifttt_bunq_payment(internal=False, draft=True)
+
+
+###############################################################################
+# Change card account action endpoints
+###############################################################################
+
+@app.route("/ifttt/v1/actions/bunq_change_card_account", methods=["POST"])
+def ifttt_change_card_account():
+    """ Execute a change card account action """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return card.change_card_account()
 
 
 ###############################################################################

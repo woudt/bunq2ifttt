@@ -13,13 +13,16 @@ handle multiple API keys!
 
 import base64
 import json
+import re
+import secrets
 import traceback
 
 import requests
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes, hmac, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 import storage
 
@@ -191,10 +194,10 @@ def get_public_key():
 # Deal with session key expiration
 #----------------------------------
 
-def session_request(method, endpoint, data=None):
+def session_request(method, endpoint, data=None, extra_headers=None):
     """ Send a request, refreshing session keys if needed """
     oldtoken = _SESSION_TOKEN
-    result = request(method, endpoint, data)
+    result = request(method, endpoint, data, extra_headers)
     # This handles an edge case where multiple instances of this code are
     # active and this one has an out of date session key in memory
     if isinstance(result, dict) and "Error" in result and \
@@ -202,14 +205,14 @@ def session_request(method, endpoint, data=None):
             ["Insufficient authorisation.", "Insufficient authentication."]:
         newtoken = get_session_token(force=True)
         if oldtoken is not None and newtoken != oldtoken:
-            result = request(method, endpoint, data)
+            result = request(method, endpoint, data, extra_headers)
     # This handles the normal case, where the session token has expired and
     # needs to be refreshed
     if isinstance(result, dict) and "Error" in result and \
             result["Error"][0]["error_description"] in \
             ["Insufficient authorisation.", "Insufficient authentication."]:
         refresh_session_token()
-        result = request(method, endpoint, data)
+        result = request(method, endpoint, data, extra_headers)
     return result
 
 def refresh_session_token():
@@ -223,16 +226,45 @@ def refresh_session_token():
         storage.store("config", "bunq_session_token", {"value": \
             _SESSION_TOKEN})
 
+def session_request_encrypted(method, endpoint, data):
+    """ Send an encrypted request to the bunq API """
+    data = json.dumps(data).encode("utf-8")
+    padding_length = (16 - len(data) % 16)
+    padding_character = bytes(bytearray([padding_length]))
+    data = data + padding_character * padding_length
+
+    inv = secrets.token_bytes(16)
+    key = secrets.token_bytes(32)
+
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(inv),
+                       backend=default_backend()).encryptor()
+    ctx = encryptor.update(data) + encryptor.finalize()
+
+    enc = get_server_key().encrypt(key, padding.PKCS1v15())
+
+    hmc = hmac.HMAC(key, hashes.SHA1(), backend=default_backend())
+    hmc.update(inv + ctx)
+    hmc = hmc.finalize()
+    headers = {
+        'X-Bunq-Client-Encryption-Iv': base64.b64encode(inv).decode("ascii"),
+        'X-Bunq-Client-Encryption-Key': base64.b64encode(enc).decode("ascii"),
+        'X-Bunq-Client-Encryption-Hmac': base64.b64encode(hmc).decode("ascii"),
+    }
+    return session_request(method, endpoint, ctx, headers)
+
 
 # Internal request methods - do not call directly
 #-------------------------------------------------
 
 BUNQAPI = "https://api.bunq.com/"
 
-def request(method, endpoint, data=None):
+def request(method, endpoint, data=None, extra_headers=None):
     """ This method executes the actual request to the bunq API """
     print(method, endpoint)
-    data = json.dumps(data) if data else ""
+    if data is None:
+        data = ""
+    elif not isinstance(data, bytes):
+        data = json.dumps(data)
     headers = {
         'Cache-Control': 'no-cache',
         'User-Agent': NAME,
@@ -241,6 +273,9 @@ def request(method, endpoint, data=None):
         'X-Bunq-Language': 'en_US',
         'X-Bunq-Region': 'en_US',
     }
+    if extra_headers is not None:
+        for extra in extra_headers:
+            headers[extra] = extra_headers[extra]
     if endpoint in ["v1/device-server", "v1/session-server"]:
         headers['X-Bunq-Client-Authentication'] = get_install_token()
     elif endpoint != "v1/installation":
@@ -254,6 +289,11 @@ def request(method, endpoint, data=None):
         reply = requests.put(BUNQAPI + endpoint, headers=headers, data=data)
     elif method == "DELETE":
         reply = requests.delete(BUNQAPI + endpoint, headers=headers)
+    if reply.status_code == 500 and re.match(r"v1/user/\d+/card/\d+",
+                                             endpoint):
+        print("Ignoring error 500 for card update")
+        return "OK" # work around a bug where the bunq API returns status 500
+                    # on a card account update, even though the call succeeded
     verify(endpoint, reply.status_code, reply.headers, reply.text)
     if reply.headers["Content-Type"] == "application/json":
         return reply.json()
@@ -266,10 +306,13 @@ def sign(method, endpoint, headers, data):
     message = method + " /" + endpoint + "\n"
     for name in sorted(headers.keys()):
         message += name + ": " + headers[name] + "\n"
-    message += "\n" + data
+    message += "\n"
+    if isinstance(data, bytes):
+        message = message.encode("ascii") + data
+    else:
+        message = (message + data).encode("ascii")
     key = get_private_key()
-    sig = key.sign(message.encode("ascii"), padding.PKCS1v15(),
-                   hashes.SHA256())
+    sig = key.sign(message, padding.PKCS1v15(), hashes.SHA256())
     sig_str = base64.b64encode(sig).decode("ascii")
     headers['X-Bunq-Client-Signature'] = sig_str
 
