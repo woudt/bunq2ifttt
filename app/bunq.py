@@ -46,11 +46,104 @@ def put(endpoint, data, config={}):
 
 def delete(endpoint, config={}):
     """ Send a DELETE request to bunq """
-    return session_request('DELETE', config, endpoint)
+    return session_request('DELETE', endpoint, config)
 
 
 # Handle installation / registration of the API key
 #---------------------------------------------------
+
+def install(token, name=NAME, allips=False, urlroot=None):
+    """ Handles the installation and registration of the API key """
+    try:
+        oldconfig = {}
+        retrieve_config(oldconfig)
+
+        config = {"access_token": token}
+
+        if "private_key" not in config:
+            generate_key(config)
+            install_key(config)
+
+        register_token(config, name, allips)
+        get_userid(config)
+        retrieve_accounts(config)
+
+        if urlroot is not None:
+            register_callback(config, urlroot)
+            # TODO unregister old callbacks
+
+        save_config(config)
+
+    except:
+        traceback.print_exc()
+        raise
+
+
+def generate_key(config):
+    """ Generate a private/public keypair to communicate with the bunq API """
+    print("[bunq] Generating new private key...")
+    my_private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+    my_private_key_enc = str(my_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ), encoding='ascii')
+
+    my_public_key = my_private_key.public_key()
+    my_public_key_enc = str(my_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ), encoding='ascii')
+
+    config["private_key"] = my_private_key
+    config["private_key_enc"] = my_private_key_enc
+    config["public_key"] = my_public_key
+    config["public_key_enc"] = my_public_key_enc
+
+
+def install_key(config):
+    """ Install the generated private/public keypair with bunq """
+    print("[bunq] Installing key...")
+    data = {"client_public_key": config["public_key_enc"]}
+    result = post("v1/installation", data, config)
+
+    install_token = result["Response"][1]["Token"]["token"]
+    srv_key = result["Response"][2]["ServerPublicKey"]["server_public_key"]
+
+    config["install_token"] = install_token
+    config["server_key_enc"] = srv_key
+    config["server_key"] = serialization.load_pem_public_key(
+        srv_key.encode("ascii"), backend=default_backend())
+
+
+def register_token(config, name, allips):
+    """ Register the provided access token with bunq """
+    print("[bunq] Registering token...")
+    if allips:
+        ips = ["*"]
+    else:
+        ips = [requests.get("https://api.ipify.org").text]
+    data = {"description": name,
+            "secret": config["access_token"],
+            "permitted_ips": ips}
+    post("v1/device-server", data, config)
+
+
+def get_userid(config):
+    """ Retrieve the userid that needs to be used in api calls """
+    print("[bunq] Retrieving userid...")
+    result = get("v1/user", config)
+    for user in result["Response"]:
+        for typ in user:
+            userid = user[typ]["id"]
+            config["user_id"] = userid
+            # XXX remove next line eventually
+            storage.store("config", "bunq_userid", {"value": userid})
+
 
 _TYPE_TRANSLATION = {
     "MonetaryAccountBank": "monetary-account-bank",
@@ -58,107 +151,42 @@ _TYPE_TRANSLATION = {
     "MonetaryAccountSavings": "monetary-account-savings",
 }
 
-def install(token, name=NAME, allips=False, urlroot=None):
-    """ Handles the installation and registration of the API key
+def retrieve_accounts(config):
+    """ Retrieve the set of accounts of the user """
+    print("[bunq] Retrieving accounts...")
+    config["accounts"] = []
+    result = get("v1/user/{}/monetary-account".format(config["user_id"]),
+                 config)
+    for res in result["Response"]:
+        for typ in res:
+            acc = res[typ]
+            type_url = _TYPE_TRANSLATION[typ]
+        if acc["status"] == "ACTIVE":
+            iban = None
+            for alias in acc["alias"]:
+                if alias["type"] == "IBAN":
+                    iban = alias["value"]
+                    name = alias["name"]
+            accinfo = {"iban": iban,
+                       "name": name,
+                       "type": type_url,
+                       "id": acc["id"],
+                       "description": acc["description"]}
+            config["accounts"].append(accinfo)
 
-    Args:
-        token (str): the API key as provided by the app or the token returned
-                     from the OAuth token exchange (by calling the v1/token)
-    """
-    try:
-        print("[bunq] Generating new private key...")
-        my_private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend()
-        )
-        my_private_key_enc = str(my_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ), encoding='ascii')
-        my_public_key = my_private_key.public_key()
-        my_public_key_enc = str(my_public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ), encoding='ascii')
 
-        config = {
-            "access_token": token,
-            "private_key": my_private_key,
-            "private_key_enc": my_private_key_enc,
-            "public_key": my_public_key,
-            "public_key_enc": my_public_key_enc,
-        }
-
-        print("[bunq] Installing key...")
-        data = {"client_public_key": my_public_key_enc}
-        result = post("v1/installation", data, config)
-
-        install_token = result["Response"][1]["Token"]["token"]
-        srv_key = result["Response"][2]["ServerPublicKey"]["server_public_key"]
-
-        config["install_token"] = install_token
-        config["server_key_enc"] = srv_key
-        config["server_key"] = serialization.load_pem_public_key(
-            srv_key.encode("ascii"), backend=default_backend())
-
-        print("[bunq] Registering token...")
-        if allips:
-            ips = ["*"]
-        else:
-            ips = [requests.get("https://api.ipify.org").text]
-        data = {"description": name,
-                "secret": token,
-                "permitted_ips": ips}
-        result = post("v1/device-server", data, config)
-
-        print("[bunq] Retrieving userid...")
-        result = get("v1/user", config)
-        for user in result["Response"]:
-            for typ in user:
-                userid = user[typ]["id"]
-                config["user_id"] = userid
-                # XXX remove next line eventually
-                storage.store("config", "bunq_userid", {"value": userid})
-
-        print("[bunq] Retrieving accounts...")
-        config["accounts"] = []
-        result = get("v1/user/{}/monetary-account".format(userid), config)
-        for res in result["Response"]:
-            for typ in res:
-                acc = res[typ]
-                type_url = _TYPE_TRANSLATION[typ]
-            if acc["status"] == "ACTIVE":
-                iban = None
-                for alias in acc["alias"]:
-                    if alias["type"] == "IBAN":
-                        iban = alias["value"]
-                        name = alias["name"]
-                accinfo = {"iban": iban,
-                           "name": name,
-                           "type": type_url,
-                           "id": acc["id"],
-                           "description": acc["description"]}
-                config["accounts"].append(accinfo)
-
-        if urlroot is not None:
-            print("[bunq] Set notification filters...")
-            post("v1/user/{}/notification-filter-url".format(userid), {
-                "notification_filters": [{
-                    "category": "MUTATION",
-                    "notification_target": urlroot + "/bunq2ifttt_mutation"
-                }, {
-                    "category": "REQUEST",
-                    "notification_target": urlroot + "/bunq2ifttt_request"
-                }]
-            }, config)
-
-        save_config(config)
-
-    except:
-        traceback.print_exc()
-        raise
+def register_callback(config, urlroot):
+    """ Register the callbacks on the account """
+    print("[bunq] Set notification filters...")
+    post("v1/user/{}/notification-filter-url".format(config["user_id"]), {
+        "notification_filters": [{
+            "category": "MUTATION",
+            "notification_target": urlroot + "/bunq2ifttt_mutation"
+        }, {
+            "category": "REQUEST",
+            "notification_target": urlroot + "/bunq2ifttt_request"
+        }]
+    }, config)
 
 
 # Credentials retrieval
@@ -180,8 +208,9 @@ def retrieve_config(config):
         print(key)
         del config[key]
     toload = storage.get_value("bunq2IFTTT", "bunq_config")
-    for key in toload:
-        config[key] = toload[key]
+    if toload is not None:
+        for key in toload:
+            config[key] = toload[key]
     # Convert strings back to keys
     if "server_key_enc" in config:
         config["server_key"] = serialization.load_pem_public_key(

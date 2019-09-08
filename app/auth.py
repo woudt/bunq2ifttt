@@ -140,7 +140,6 @@ def set_bunq_oauth_api_key():
             try:
                 bunq.install(key, allips=allips)
                 util.save_bunq_security_mode("API key")
-                util.retrieve_and_save_bunq_userid()
                 util.update_bunq_accounts()
                 return render_template("message.html", msgtype="success", msg=\
                     'API key successfully installed <br><br>'\
