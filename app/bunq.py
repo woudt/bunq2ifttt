@@ -9,7 +9,7 @@ Features:
 Caveat: for use with one API key only per installation. This module does not
 handle multiple API keys!
 """
-# pylint: disable=global-statement
+# pylint: disable=dangerous-default-value
 
 import base64
 import json
@@ -32,51 +32,76 @@ NAME = "bunq2IFTTT"
 # Core request methods
 #----------------------
 
-def get(endpoint):
+def get(endpoint, config={}):
     """ Send a GET request to bunq """
-    return session_request('GET', endpoint)
+    return session_request('GET', endpoint, config)
 
-def post(endpoint, data):
+def post(endpoint, data, config={}):
     """ Send a POST request to bunq """
-    return session_request('POST', endpoint, data)
+    return session_request('POST', endpoint, config, data)
 
-def put(endpoint, data):
+def put(endpoint, data, config={}):
     """ Send a PUT request to bunq """
-    return session_request('PUT', endpoint, data)
+    return session_request('PUT', endpoint, config, data)
 
-def delete(endpoint):
+def delete(endpoint, config={}):
     """ Send a DELETE request to bunq """
-    return session_request('DELETE', endpoint)
+    return session_request('DELETE', config, endpoint)
 
 
 # Handle installation / registration of the API key
 #---------------------------------------------------
 
-def install(token, name=NAME, allips=False):
+_TYPE_TRANSLATION = {
+    "MonetaryAccountBank": "monetary-account-bank",
+    "MonetaryAccountJoint": "monetary-account-joint",
+    "MonetaryAccountSavings": "monetary-account-savings",
+}
+
+def install(token, name=NAME, allips=False, urlroot=None):
     """ Handles the installation and registration of the API key
 
     Args:
         token (str): the API key as provided by the app or the token returned
                      from the OAuth token exchange (by calling the v1/token)
     """
-    global _ACCESS_TOKEN, _INSTALL_TOKEN, _SESSION_TOKEN, \
-           _SERVER_KEY, _PRIVATE_KEY
     try:
-        _ACCESS_TOKEN = token
         print("[bunq] Generating new private key...")
-        _PRIVATE_KEY = rsa.generate_private_key(
+        my_private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
             backend=default_backend()
         )
+        my_private_key_enc = str(my_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ), encoding='ascii')
+        my_public_key = my_private_key.public_key()
+        my_public_key_enc = str(my_public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ), encoding='ascii')
+
+        config = {
+            "access_token": token,
+            "private_key": my_private_key,
+            "private_key_enc": my_private_key_enc,
+            "public_key": my_public_key,
+            "public_key_enc": my_public_key_enc,
+        }
+
         print("[bunq] Installing key...")
-        data = {"client_public_key": get_public_key()}
-        result = post("v1/installation", data)
-        _INSTALL_TOKEN = result["Response"][1]["Token"]["token"]
-        _server_bytes = result["Response"][2]["ServerPublicKey"] \
-            ["server_public_key"].encode("ascii")
-        _SERVER_KEY = serialization.load_pem_public_key(
-            _server_bytes, backend=default_backend())
+        data = {"client_public_key": my_public_key_enc}
+        result = post("v1/installation", data, config)
+
+        install_token = result["Response"][1]["Token"]["token"]
+        srv_key = result["Response"][2]["ServerPublicKey"]["server_public_key"]
+
+        config["install_token"] = install_token
+        config["server_key_enc"] = srv_key
+        config["server_key"] = serialization.load_pem_public_key(
+            srv_key.encode("ascii"), backend=default_backend())
 
         print("[bunq] Registering token...")
         if allips:
@@ -84,149 +109,161 @@ def install(token, name=NAME, allips=False):
         else:
             ips = [requests.get("https://api.ipify.org").text]
         data = {"description": name,
-                "secret": _ACCESS_TOKEN,
+                "secret": token,
                 "permitted_ips": ips}
-        result = post("v1/device-server", data)
+        result = post("v1/device-server", data, config)
 
-        _private_bytes = _PRIVATE_KEY.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        # split to fit within 1500 byte maximum
-        private_1 = _private_bytes[:1000]
-        private_2 = _private_bytes[1000:]
+        print("[bunq] Retrieving userid...")
+        result = get("v1/user", config)
+        for user in result["Response"]:
+            for typ in user:
+                userid = user[typ]["id"]
+                config["user_id"] = userid
+                # XXX remove next line eventually
+                storage.store("config", "bunq_userid", {"value": userid})
 
-        storage.store("config", "bunq_private_key_1", {"value": \
-            base64.a85encode(private_1).decode("ascii")})
-        storage.store("config", "bunq_private_key_2", {"value": \
-            base64.a85encode(private_2).decode("ascii")})
-        storage.store("config", "bunq_server_key", {"value": \
-            base64.a85encode(_server_bytes).decode("ascii")})
-        storage.store("config", "bunq_access_token", {"value": \
-            _ACCESS_TOKEN})
-        storage.store("config", "bunq_install_token", {"value": \
-            _INSTALL_TOKEN})
+        print("[bunq] Retrieving accounts...")
+        config["accounts"] = []
+        result = get("v1/user/{}/monetary-account".format(userid), config)
+        for res in result["Response"]:
+            for typ in res:
+                acc = res[typ]
+                type_url = _TYPE_TRANSLATION[typ]
+            if acc["status"] == "ACTIVE":
+                iban = None
+                for alias in acc["alias"]:
+                    if alias["type"] == "IBAN":
+                        iban = alias["value"]
+                        name = alias["name"]
+                accinfo = {"iban": iban,
+                           "name": name,
+                           "type": type_url,
+                           "id": acc["id"],
+                           "description": acc["description"]}
+                config["accounts"].append(accinfo)
 
-        _SESSION_TOKEN = None
+        if urlroot is not None:
+            print("[bunq] Set notification filters...")
+            post("v1/user/{}/notification-filter-url".format(userid), {
+                "notification_filters": [{
+                    "category": "MUTATION",
+                    "notification_target": urlroot + "/bunq2ifttt_mutation"
+                }, {
+                    "category": "REQUEST",
+                    "notification_target": urlroot + "/bunq2ifttt_request"
+                }]
+            }, config)
+
+        save_config(config)
 
     except:
         traceback.print_exc()
-        _ACCESS_TOKEN = None
-        _INSTALL_TOKEN = None
-        _SERVER_KEY = None
-        _PRIVATE_KEY = None
-        _SESSION_TOKEN = None
         raise
 
 
-# Credentials cashing and retrieval
+# Credentials retrieval
 #-----------------------------------
 
-_SESSION_TOKEN = None
-_ACCESS_TOKEN = None
-_INSTALL_TOKEN = None
-_SERVER_KEY = None
-_PRIVATE_KEY = None
+def save_config(config):
+    """ Save the configuration parameters """
+    tosave = {}
+    for key in config:
+        # Only store supported types
+        if isinstance(config[key], (str, int, float, dict, list))\
+        or config[key] is None:
+            tosave[key] = config[key]
+    storage.store_large("bunq2IFTTT", "bunq_config", tosave)
+
+def retrieve_config(config):
+    """ Retrieve the configuration parameters from storage """
+    for key in list(config.keys()):
+        print(key)
+        del config[key]
+    toload = storage.get_value("bunq2IFTTT", "bunq_config")
+    for key in toload:
+        config[key] = toload[key]
+    # Convert strings back to keys
+    if "server_key_enc" in config:
+        config["server_key"] = serialization.load_pem_public_key(
+            config["server_key_enc"].encode("ascii"),
+            backend=default_backend())
+    if "public_key_enc" in config:
+        config["public_key"] = serialization.load_pem_public_key(
+            config["public_key_enc"].encode("ascii"),
+            backend=default_backend())
+    if "private_key_enc" in config:
+        config["private_key"] = serialization.load_pem_private_key(
+            config["private_key_enc"].encode("ascii"),
+            password=None, backend=default_backend())
 
 
-def get_session_token(force=False):
-    """ Retrieves the session token from cache or the datastore
-        or get one from the server if it is the first time
-    """
-    global _SESSION_TOKEN
-    if force:
-        refresh_session_token()
-    elif _SESSION_TOKEN is None:
-        entity = storage.retrieve("config", "bunq_session_token")
-        if entity is not None:
-            _SESSION_TOKEN = entity["value"]
-        else:
-            refresh_session_token()
-    return _SESSION_TOKEN
+def get_session_token(config):
+    """ Return the session token, create or retrieve from storage if needed """
+    if "private_key" not in config:
+        retrieve_config(config)
+    if "session_token" not in config:
+        refresh_session_token(config)
+    return config["session_token"]
 
-def get_access_token():
-    """ Retrieves the access token from cache or the datastore """
-    global _ACCESS_TOKEN
-    if _ACCESS_TOKEN is None:
-        entity = storage.retrieve("config", "bunq_access_token")
-        _ACCESS_TOKEN = entity["value"]
-    return _ACCESS_TOKEN
+def get_access_token(config):
+    """ Return the access token, retrieve from storage if needed """
+    if "access_token" not in config:
+        retrieve_config(config)
+    return config["access_token"]
 
-def get_install_token():
-    """ Retrieves the install token from cache or the datastore """
-    global _INSTALL_TOKEN
-    if _INSTALL_TOKEN is None:
-        entity = storage.retrieve("config", "bunq_install_token")
-        _INSTALL_TOKEN = entity["value"]
-    return _INSTALL_TOKEN
+def get_install_token(config):
+    """ Return the install token, retrieve from storage if needed """
+    if "install_token" not in config:
+        retrieve_config(config)
+    return config["install_token"]
 
-def get_server_key():
-    """ Retrieves the server public key from cache or the datastore """
-    global _SERVER_KEY
-    if _SERVER_KEY is None:
-        entity = storage.retrieve("config", "bunq_server_key")
-        server_bytes = base64.a85decode(entity["value"])
-        _SERVER_KEY = serialization.load_pem_public_key(
-            server_bytes, backend=default_backend())
-    return _SERVER_KEY
+def get_server_key(config):
+    """ Return the server public key, retrieve from storage if needed """
+    if "server_key" not in config:
+        retrieve_config(config)
+    return config["server_key"]
 
-def get_private_key():
-    """ Retrieves my private key from cache or the datastore """
-    global _PRIVATE_KEY
-    if _PRIVATE_KEY is None:
-        entity = storage.retrieve("config", "bunq_private_key_1")
-        private_1 = base64.a85decode(entity["value"])
-        entity = storage.retrieve("config", "bunq_private_key_2")
-        private_2 = base64.a85decode(entity["value"])
-        _PRIVATE_KEY = serialization.load_pem_private_key(
-            private_1 + private_2, password=None, backend=default_backend())
-    return _PRIVATE_KEY
+def get_private_key(config):
+    """ Return the my private key, retrieve from storage if needed """
+    if "private_key" not in config:
+        retrieve_config(config)
+    return config["private_key"]
 
-def get_public_key():
-    """ Retrieves my public key in ascii format """
-    return str(get_private_key().public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ), encoding='ascii')
+def get_public_key(config):
+    """ Return the my public key, retrieve from storage if needed """
+    if "public_key" not in config:
+        retrieve_config(config)
+    return config["public_key"]
 
 
 # Deal with session key expiration
 #----------------------------------
 
-def session_request(method, endpoint, data=None, extra_headers=None):
+def session_request(method, endpoint, config, data=None, extra_headers=None):
     """ Send a request, refreshing session keys if needed """
-    oldtoken = _SESSION_TOKEN
-    result = request(method, endpoint, data, extra_headers)
-    # This handles an edge case where multiple instances of this code are
-    # active and this one has an out of date session key in memory
+    result = request(method, endpoint, config, data, extra_headers)
     if isinstance(result, dict) and "Error" in result and \
             result["Error"][0]["error_description"] in \
             ["Insufficient authorisation.", "Insufficient authentication."]:
-        newtoken = get_session_token(force=True)
-        if oldtoken is not None and newtoken != oldtoken:
-            result = request(method, endpoint, data, extra_headers)
-    # This handles the normal case, where the session token has expired and
-    # needs to be refreshed
-    if isinstance(result, dict) and "Error" in result and \
-            result["Error"][0]["error_description"] in \
-            ["Insufficient authorisation.", "Insufficient authentication."]:
-        refresh_session_token()
-        result = request(method, endpoint, data, extra_headers)
+        refresh_session_token(config)
+        result = request(method, endpoint, config, data, extra_headers)
     return result
 
-def refresh_session_token():
+def refresh_session_token(config):
     """ Refresh an expired session token """
-    global _SESSION_TOKEN
     print("[bunq] Refreshing session token...")
-    data = {"secret": get_access_token()}
-    result = post("v1/session-server", data)
+    data = {"secret": get_access_token(config)}
+    result = post("v1/session-server", data, config)
     if "Response" in result:
-        _SESSION_TOKEN = result["Response"][1]["Token"]["token"]
-        storage.store("config", "bunq_session_token", {"value": \
-            _SESSION_TOKEN})
+        session_token = result["Response"][1]["Token"]["token"]
+        config["session_token"] = session_token
+        save_config(config)
+        return session_token
+    print("ERROR: session token refresh failed!")
+    print(result)
+    return ""
 
-def session_request_encrypted(method, endpoint, data):
+def session_request_encrypted(method, endpoint, data, config={}):
     """ Send an encrypted request to the bunq API """
     data = json.dumps(data).encode("utf-8")
     padding_length = (16 - len(data) % 16)
@@ -240,7 +277,7 @@ def session_request_encrypted(method, endpoint, data):
                        backend=default_backend()).encryptor()
     ctx = encryptor.update(data) + encryptor.finalize()
 
-    enc = get_server_key().encrypt(key, padding.PKCS1v15())
+    enc = get_server_key(config).encrypt(key, padding.PKCS1v15())
 
     hmc = hmac.HMAC(key, hashes.SHA1(), backend=default_backend())
     hmc.update(inv + ctx)
@@ -250,7 +287,7 @@ def session_request_encrypted(method, endpoint, data):
         'X-Bunq-Client-Encryption-Key': base64.b64encode(enc).decode("ascii"),
         'X-Bunq-Client-Encryption-Hmac': base64.b64encode(hmc).decode("ascii"),
     }
-    return session_request(method, endpoint, ctx, headers)
+    return session_request(method, endpoint, config, ctx, headers)
 
 
 # Internal request methods - do not call directly
@@ -258,7 +295,7 @@ def session_request_encrypted(method, endpoint, data):
 
 BUNQAPI = "https://api.bunq.com/"
 
-def request(method, endpoint, data=None, extra_headers=None):
+def request(method, endpoint, config, data=None, extra_headers=None):
     """ This method executes the actual request to the bunq API """
     print(method, endpoint)
     if data is None:
@@ -277,10 +314,10 @@ def request(method, endpoint, data=None, extra_headers=None):
         for extra in extra_headers:
             headers[extra] = extra_headers[extra]
     if endpoint in ["v1/device-server", "v1/session-server"]:
-        headers['X-Bunq-Client-Authentication'] = get_install_token()
+        headers['X-Bunq-Client-Authentication'] = get_install_token(config)
     elif endpoint != "v1/installation":
-        headers['X-Bunq-Client-Authentication'] = get_session_token()
-    sign(method, endpoint, headers, data)
+        headers['X-Bunq-Client-Authentication'] = get_session_token(config)
+    sign(method, endpoint, config, headers, data)
     if method == "GET":
         reply = requests.get(BUNQAPI + endpoint, headers=headers)
     elif method == "POST":
@@ -294,12 +331,12 @@ def request(method, endpoint, data=None, extra_headers=None):
         print("Ignoring error 500 for card update")
         return "OK" # work around a bug where the bunq API returns status 500
                     # on a card account update, even though the call succeeded
-    verify(endpoint, reply.status_code, reply.headers, reply.text)
+    verify(endpoint, config, reply.status_code, reply.headers, reply.text)
     if reply.headers["Content-Type"] == "application/json":
         return reply.json()
     return reply.text
 
-def sign(method, endpoint, headers, data):
+def sign(method, endpoint, config, headers, data):
     """ Sign the message before sending """
     if endpoint == "v1/installation":
         return # Installation call is not signed
@@ -311,12 +348,12 @@ def sign(method, endpoint, headers, data):
         message = message.encode("ascii") + data
     else:
         message = (message + data).encode("ascii")
-    key = get_private_key()
+    key = get_private_key(config)
     sig = key.sign(message, padding.PKCS1v15(), hashes.SHA256())
     sig_str = base64.b64encode(sig).decode("ascii")
     headers['X-Bunq-Client-Signature'] = sig_str
 
-def verify(endpoint, status_code, headers, text):
+def verify(endpoint, config, status_code, headers, text):
     """ Verify bunq's signature on the reply """
     if endpoint == "v1/installation":
         return # Installation call is not signed
@@ -331,7 +368,7 @@ def verify(endpoint, status_code, headers, text):
             message += name + ": " + headers[name] + "\n"
     message += "\n" + text
     sig = base64.b64decode(headers["X-Bunq-Server-Signature"])
-    key = get_server_key()
+    key = get_server_key(config)
     # Will throw an exception on failure
     key.verify(sig, message.encode("ascii"),
                padding.PKCS1v15(), hashes.SHA256())

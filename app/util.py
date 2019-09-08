@@ -352,16 +352,6 @@ def get_bunq_userid():
         _BUNQ_USERID = storage.retrieve("config", "bunq_userid")["value"]
     return _BUNQ_USERID
 
-def retrieve_and_save_bunq_userid():
-    """ Retrieve the bunq userid from bunq and save it """
-    global _BUNQ_USERID
-    result = bunq.get("v1/user")
-    for user in result["Response"]:
-        for typ in user:
-            _BUNQ_USERID = user[typ]["id"]
-    storage.store("config", "bunq_userid", {"value": _BUNQ_USERID})
-
-
 def get_bunq_security_mode():
     """ Return the bunq security mode """
     global _BUNQ_SECURITY_MODE

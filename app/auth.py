@@ -99,10 +99,9 @@ def set_bunq_oauth_response():
         req = requests.post(url)
         key = req.json()["access_token"]
         allips = storage.retrieve("config", "bunq_allips")["value"]
-        bunq.install(key, allips=allips)
+        bunq.install(key, allips=allips, urlroot=request.url_root)
         util.save_bunq_security_mode("OAuth")
         util.save_app_mode("master")
-        util.retrieve_and_save_bunq_userid()
         util.update_bunq_accounts()
         return render_template("message.html", msgtype="success", msg=\
             'OAuth successfully setup <br><br>'\
