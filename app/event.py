@@ -762,7 +762,7 @@ def trigger_oauth_expires():
                 transactions = [{
                     "created_at": arrow.get(timestamp)\
                                   .to(timezone).isoformat(),
-                    "expires_at": arrow.get(value["timestamp"])\
+                    "expires_at": arrow.get(value["timestamp"] + 90*24*3600)\
                                   .to(timezone).isoformat(),
                     "meta": {
                         "id": str(timestamp),
