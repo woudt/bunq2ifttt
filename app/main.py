@@ -359,6 +359,9 @@ def ifttt_test_setup():
                         "description_comparator_2": "not_equal",
                         "description_value_2": "Foo bar",
                     },
+                    "bunq_oauth_expires": {
+                        "hours": "9876543210",
+                    }
                 },
                 "actions": {
                     "bunq_internal_payment": {
@@ -704,6 +707,23 @@ def trigger_request_delete(triggerid):
     if errmsg:
         return errmsg, 401
     return event.trigger_request_delete(triggerid)
+
+@app.route("/ifttt/v1/triggers/bunq_oauth_expires", methods=["POST"])
+def trigger_oauth_expires():
+    """ Retrieve bunq_oauth_expires trigger items """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return event.trigger_oauth_expires()
+
+@app.route("/ifttt/v1/triggers/bunq_oauth_expires/trigger_identity/"\
+           "<triggerid>", methods=["DELETE"])
+def trigger_oauth_expires_delete(triggerid):
+    """ Delete a trigger_identity for the bunq_oauth_expires trigger """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return event.trigger_oauth_expires_delete(triggerid)
 
 
 ###############################################################################

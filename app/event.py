@@ -8,6 +8,7 @@ Handles all events:
 # pylint: disable=broad-except
 
 import json
+import time
 import traceback
 import uuid
 
@@ -717,5 +718,108 @@ def trigger_request_delete(identity):
     except Exception:
         traceback.print_exc()
         print("[trigger_request_delete] ERROR: cannot delete trigger")
+        return json.dumps({"errors": [{"message": "Cannot delete trigger"}]}),\
+               400
+
+
+###############################################################################
+# IFTTT trigger bunq_oauth_expires
+###############################################################################
+
+def trigger_oauth_expires():
+    """ Callback for IFTTT trigger bunq_oauth_expires """
+    try:
+        data = request.get_json()
+        print("[trigger_oauthexp] input: {}".format(json.dumps(data)))
+
+        if "triggerFields" not in data or \
+                "hours" not in data["triggerFields"]:
+            print("[trigger_oauthexp] ERROR: hours field missing!")
+            return json.dumps({"errors": [{"message": "Invalid data"}]}), 400
+        hours = data["triggerFields"]["hours"]
+
+        if "trigger_identity" not in data:
+            print("[trigger_oauthexp] ERROR: trigger_identity field missing!")
+            return json.dumps({"errors": [{"message": "Invalid data"}]}), 400
+        identity = data["trigger_identity"]
+
+        limit = 50
+        if "limit" in data:
+            limit = data["limit"]
+
+        if hours == "9876543210":
+            return trigger_oauth_expires_test(limit)
+
+        timezone = "UTC"
+        if "user" in data and "timezone" in data["user"]:
+            timezone = data["user"]["timezone"]
+
+        transactions = []
+        value = storage.get_value("bunq2IFTTT", "oauth_expires")
+        if value is not None:
+            timestamp = value["timestamp"] + 3600 * (90*24 - int(hours))
+            if timestamp <= time.time():
+                transactions = [{
+                    "created_at": arrow.get(timestamp)\
+                                  .to(timezone).isoformat(),
+                    "expires_at": arrow.get(value["timestamp"])\
+                                  .to(timezone).isoformat(),
+                    "meta": {
+                        "id": str(timestamp),
+                        "timestamp": str(timestamp),
+                    }
+                }]
+
+        print("[trigger_oauthexp] Found {} transactions"
+              .format(len(transactions)))
+        return json.dumps({"data": transactions[:limit]})
+    except Exception:
+        traceback.print_exc()
+        print("[trigger_oauthexp] ERROR: cannot retrieve oauth expiry data")
+        return json.dumps({"errors": [{"message": \
+                           "Cannot retrieve oauth expiry data"}]}), 400
+
+
+def trigger_oauth_expires_test(limit):
+    """ Test data for IFTTT trigger bunq_oauth_expires """
+    result = [{
+        "created_at": "2018-01-05T11:25:15+00:00",
+        "expires_at": "2018-01-05T11:25:15+00:00",
+        "meta": {
+            "id": "1",
+            "timestamp": "1515151515"
+        }
+    }, {
+        "created_at": "2014-10-24T09:03:34+00:00",
+        "expires_at": "2014-10-24T09:03:34+00:00",
+        "meta": {
+            "id": "2",
+            "timestamp": "1414141414"
+        }
+    }, {
+        "created_at": "2008-05-30T04:20:12+00:00",
+        "expires_at": "2008-05-30T04:20:12+00:00",
+        "meta": {
+            "id": "3",
+            "timestamp": "1212121212"
+        }
+    }]
+    return json.dumps({"data": result[:limit]})
+
+
+def trigger_oauth_expires_delete(identity):
+    """ Delete a specific trigger identity for trigger bunq_oauth_expires """
+    try:
+        value = storage.get_value("bunq2IFTTT", "oauth_expires")
+        newtriggers = []
+        for ident, hours in value["triggers"]:
+            if ident != identity:
+                newtriggers.append((ident, hours))
+        value["triggers"] = newtriggers
+        storage.store_large("bunq2IFTTT", "oauth_expires", value)
+        return ""
+    except Exception:
+        traceback.print_exc()
+        print("[trigger_oauthexp_delete] ERROR: cannot delete trigger")
         return json.dumps({"errors": [{"message": "Cannot delete trigger"}]}),\
                400

@@ -15,6 +15,7 @@ import base64
 import json
 import re
 import secrets
+import time
 import traceback
 
 import requests
@@ -55,6 +56,11 @@ def delete(endpoint, config={}):
 def install(token, name=NAME, allips=False, urlroot=None):
     """ Handles the installation and registration of the API key """
     try:
+        storage.store_large("bunq2IFTTT", "oauth_expires", {
+            "timestamp": int(time.time()),
+            "triggers": [],
+        })
+
         oldconfig = {}
         retrieve_config(oldconfig)
 
