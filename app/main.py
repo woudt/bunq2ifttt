@@ -5,6 +5,8 @@ Main module serving the pages for the bunq2IFTTT appengine app
 import json
 import os
 
+import arrow
+
 from flask import Flask, request, render_template
 
 import auth
@@ -35,12 +37,18 @@ def home_get():
     appmode = util.get_app_mode()
     masterurl = util.get_app_master_url()
     enableexternal = util.get_external_payment_enabled()
+    value = storage.get_value("bunq2IFTTT", "oauth_expires")
+    if value is not None:
+        expire = arrow.get(value["timestamp"] + 90*24*3600)
+        oauth_expiry = "{} ({})".format(expire.humanize(), expire.isoformat())
+    else:
+        oauth_expiry = None
     # Google AppEngine does not provide fixed ip addresses
     defaultallips = (os.getenv("GAE_INSTANCE") is not None)
     return render_template("main.html",\
         iftttkeyset=iftttkeyset, bunqkeymode=bunqkeymode, accounts=accounts,\
         appmode=appmode, masterurl=masterurl, enableexternal=enableexternal,\
-        defaultallips=defaultallips)
+        defaultallips=defaultallips, oauth_expiry=oauth_expiry)
 
 
 @app.route("/login", methods=["POST"])
@@ -66,6 +74,15 @@ def set_bunq_oauth_api_key():
         return render_template("message.html", msgtype="danger", msg=\
             "Invalid request: session cookie not set or not valid")
     return auth.set_bunq_oauth_api_key()
+
+@app.route("/bunq_oauth_reauthorize", methods=["GET"])
+def bunq_oauth_reauthorize():
+    """ Endpoint to reauthorize OAuth with bunq """
+    cookie = request.cookies.get('session')
+    if cookie is None or cookie != util.get_session_cookie():
+        return render_template("message.html", msgtype="danger", msg=\
+            "Invalid request: session cookie not set or not valid")
+    return auth.bunq_oauth_reauthorize()
 
 @app.route("/auth", methods=["GET"])
 def set_bunq_oauth_response():

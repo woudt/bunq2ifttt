@@ -21,6 +21,11 @@
             </div>
             <div class="row">
                 <div class="col-12">
+                    {% if oauth_expiry %}
+                    <a href="/bunq_oauth_reauthorize" class="btn btn-primary">Reauthorize</a>
+                    Current expiration: {{ oauth_expiry }}
+                    <br><br>
+                    {% endif %}
                     <b>Accounts configured for actions:</b> [<a href="/update_accounts">update</a>]<br>
                     {% if accounts %}
                     {% for acc in accounts %}{{ acc.iban }} {{ acc.description }}<br>

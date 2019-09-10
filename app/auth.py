@@ -159,3 +159,13 @@ def set_bunq_oauth_api_key():
         return render_template("message.html", msgtype="danger", msg=\
             'An unknown exception occurred. See the logs. <br><br>'\
             '<a href="/">Click here to return home</a>')
+
+def bunq_oauth_reauthorize():
+    redirect_url = request.url_root + "auth"
+    url = "https://oauth.bunq.com/auth?response_type=code"\
+          "&client_id=" + storage.get_value("config", "bunq_client_id") + \
+          "&redirect_uri=" + redirect_url
+    return render_template("message.html", msgtype="primary", msg=\
+        "Make sure the following URL is included as a redirect url:"\
+        "<br><br><b>" + redirect_url + "</b><br><br>"\
+        'Then click <a href="' + url + '">this link</a>')
