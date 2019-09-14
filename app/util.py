@@ -6,9 +6,6 @@ Mainly to handle storage and caching of some frequently used data elements
 # pylint: disable=global-statement
 
 import base64
-import json
-
-import requests
 
 from flask import request
 
@@ -20,9 +17,6 @@ _IFTTT_SERVICE_KEY = None
 _BUNQ_ACCOUNTS_LOCAL = None
 _BUNQ_ACCOUNTS_CALLBACK = None
 _BUNQ_USERID = None
-_BUNQ_SECURITY_MODE = None
-_APP_MODE = None
-_APP_MASTER_URL = None
 
 
 # WARNING: the follow setting is extremely dangerous to change !!!!!!!!!!!!!!!!
@@ -141,10 +135,7 @@ def change_account_enabled_callback(iban, enabletype, value):
         return False
     value = {'true': True, 'false': False}[value]
 
-    if get_app_mode() == 'master':
-        url_base = request.url_root
-    else:
-        url_base = get_app_master_url()
+    url_base = request.url_root
 
     for acc in (x for x in _BUNQ_ACCOUNTS_CALLBACK if x["iban"] == iban):
         if enabletype == "enableMutation" and enabletype in acc:
@@ -161,7 +152,7 @@ def change_account_enabled_callback(iban, enabletype, value):
                                     cat, value, url_base, url_method):
             return False
         update_bunq_accounts()
-        return update_master_from_slave(url_base)
+        return ""
 
     print("IBAN not found: {}".format(iban))
     return False
@@ -188,23 +179,6 @@ def update_bunq_callback(accurl, cat, value, url_base, url_method):
     if 'Error' in res:
         print("Result: ", res)
         return False
-    return True
-
-def update_master_from_slave(url_base):
-    """ Update the master in case we are running in slave mode """
-    if get_app_mode() == 'slave':
-        data = [x.copy() for x in get_bunq_accounts_callback() \
-                         if x['enableMutation'] or x['enableRequest']]
-        for acc in data:
-            del acc["callbackOther"]
-        headers = {"Content-Type": "application/json",
-                   "IFTTT-Service-Key": get_ifttt_service_key()}
-        req = requests.post(url_base + "account_callback",
-                            data=json.dumps(data),
-                            headers=headers)
-        if req.status_code != 200:
-            print("Update master failed:", req.status_code, req.text)
-            return False
     return True
 
 _TYPE_TRANSLATION = {
@@ -260,8 +234,6 @@ def update_bunq_accounts():
             accounts_callback.append(accinfo)
 
     process_bunq_accounts_local(accounts_local)
-    if get_bunq_security_mode() == "API key":
-        process_bunq_accounts_callback(accounts_callback)
 
 
 def process_bunq_accounts_local(accounts):
@@ -351,61 +323,3 @@ def get_bunq_userid():
     if _BUNQ_USERID is None:
         _BUNQ_USERID = storage.retrieve("config", "bunq_userid")["value"]
     return _BUNQ_USERID
-
-def get_bunq_security_mode():
-    """ Return the bunq security mode """
-    global _BUNQ_SECURITY_MODE
-    if _BUNQ_SECURITY_MODE is None:
-        entity = storage.retrieve("config", "bunq_security_mode")
-        if entity is not None:
-            _BUNQ_SECURITY_MODE = entity["value"]
-    return _BUNQ_SECURITY_MODE
-
-def save_bunq_security_mode(value):
-    """ Save the bunq security mode """
-    global _BUNQ_SECURITY_MODE
-    _BUNQ_SECURITY_MODE = value
-    if value is None:
-        storage.remove("config", "bunq_security_mode")
-    else:
-        storage.store("config", "bunq_security_mode", {"value": value})
-
-
-def get_app_mode():
-    """ Return the app mode (master/slave) """
-    global _APP_MODE
-    if _APP_MODE is None:
-        entity = storage.retrieve("config", "app_mode")
-        if entity is not None:
-            _APP_MODE = entity["value"]
-        else:
-            save_app_mode('master')
-    return _APP_MODE
-
-def save_app_mode(value):
-    """ Save the app mode """
-    global _APP_MODE
-    _APP_MODE = value
-    if value is None:
-        storage.remove("config", "app_mode")
-    else:
-        storage.store("config", "app_mode", {"value": value})
-
-
-def get_app_master_url():
-    """ Return the URL of the master instance """
-    global _APP_MASTER_URL
-    if _APP_MASTER_URL is None:
-        entity = storage.retrieve("config", "app_master_url")
-        if entity is not None:
-            _APP_MASTER_URL = entity["value"]
-    return _APP_MASTER_URL
-
-def save_app_master_url(value):
-    """ Save the URL of the master instance """
-    global _APP_MASTER_URL
-    _APP_MASTER_URL = value
-    if value is None:
-        storage.remove("config", "app_master_url")
-    else:
-        storage.store("config", "app_master_url", {"value": value})

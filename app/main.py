@@ -10,6 +10,7 @@ import arrow
 from flask import Flask, request, render_template
 
 import auth
+import bunq
 import card
 import event
 import payment
@@ -31,24 +32,29 @@ def home_get():
     cookie = request.cookies.get('session')
     if cookie is None or cookie != util.get_session_cookie():
         return render_template("start.html")
+
+    config = {}
+    bunq.retrieve_config(config)
+    bunqkeymode = None
+    if "mode" in config:
+        bunqkeymode = config["mode"]
+
     iftttkeyset = (util.get_ifttt_service_key() is not None)
-    bunqkeymode = util.get_bunq_security_mode()
     accounts = util.get_bunq_accounts_combined()
-    appmode = util.get_app_mode()
-    masterurl = util.get_app_master_url()
     enableexternal = util.get_external_payment_enabled()
-    value = storage.get_value("bunq2IFTTT", "oauth_expires")
-    if value is not None:
-        expire = arrow.get(value["timestamp"] + 90*24*3600)
+    bunq_oauth = storage.get_value("bunq2IFTTT", "bunq_oauth")
+    if bunq_oauth is not None:
+        expire = arrow.get(bunq_oauth["timestamp"] + 90*24*3600)
         oauth_expiry = "{} ({})".format(expire.humanize(), expire.isoformat())
     else:
         oauth_expiry = None
     # Google AppEngine does not provide fixed ip addresses
     defaultallips = (os.getenv("GAE_INSTANCE") is not None)
+
     return render_template("main.html",\
         iftttkeyset=iftttkeyset, bunqkeymode=bunqkeymode, accounts=accounts,\
-        appmode=appmode, masterurl=masterurl, enableexternal=enableexternal,\
-        defaultallips=defaultallips, oauth_expiry=oauth_expiry)
+        enableexternal=enableexternal, defaultallips=defaultallips,\
+        oauth_expiry=oauth_expiry)
 
 
 @app.route("/login", methods=["POST"])
@@ -103,18 +109,6 @@ def update_accounts():
     util.update_bunq_accounts()
     return render_template("message.html", msgtype="success", msg=\
         'Account update completed<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/mode_master", methods=["GET"])
-def mode_master():
-    """ Endpoint to switch to master mode """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    util.save_app_mode('master')
-    return render_template("message.html", msgtype="success", msg=\
-        'Master mode set<br><br>'\
         '<a href="/">Click here to return home</a>')
 
 @app.route("/account_change_internal", methods=["GET"])
@@ -179,10 +173,6 @@ def account_change_mutation():
     if cookie is None or cookie != util.get_session_cookie():
         return render_template("message.html", msgtype="danger", msg=\
             "Invalid request: session cookie not set or not valid")
-    if util.get_bunq_security_mode() == "OAuth":
-        return render_template("message.html", msgtype="danger", msg=\
-            'Callbacks can only be set with an API key!<br><br>'\
-            '<a href="/">Click here to return home</a>')
     if util.change_account_enabled_callback(request.args["iban"],
                                             "enableMutation",
                                             request.args["value"]):
@@ -200,10 +190,6 @@ def account_change_request():
     if cookie is None or cookie != util.get_session_cookie():
         return render_template("message.html", msgtype="danger", msg=\
             "Invalid request: session cookie not set or not valid")
-    if util.get_bunq_security_mode() == "OAuth":
-        return render_template("message.html", msgtype="danger", msg=\
-            'Callbacks can only be set with an API key!<br><br>'\
-            '<a href="/">Click here to return home</a>')
     if util.change_account_enabled_callback(request.args["iban"],
                                             "enableRequest",
                                             request.args["value"]):
@@ -213,51 +199,6 @@ def account_change_request():
     return render_template("message.html", msgtype="danger", msg=\
         'Something went wrong, please check the logs!<br><br>'\
         '<a href="/">Click here to return home</a>')
-
-@app.route("/mode_slave", methods=["GET"])
-def mode_slave():
-    """ Endpoint to switch to slave mode """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    util.save_app_mode('slave')
-    return render_template("message.html", msgtype="success", msg=\
-        'Slave mode set<br><br>'\
-        '<a href="/">Click here to return home</a><br>'\
-        'Please make sure to set the URL to the master instance!')
-
-@app.route("/set_master_url", methods=["POST"])
-def set_master_url():
-    """ Endpoint to set the master URL used in slave mode """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    url = request.form["masterurl"]
-    if not url.startswith("http://") and not url.startswith("https://"):
-        return render_template("message.html", msgtype="danger", msg=\
-            'Invalid URL, it doesnt start with http(s)://<br><br>'\
-            '<a href="/">Click here to return home</a><br>')
-    if not url.endswith("/"):
-        url += "/"
-    util.save_app_master_url(url)
-    return render_template("message.html", msgtype="success", msg=\
-        'Master URL set<br><br>'\
-        '<a href="/">Click here to return home</a><br>')
-
-@app.route("/account_callback", methods=["POST"])
-def account_callback():
-    """ Callback for submitting account info from a slave """
-    errmsg = check_ifttt_service_key()
-    if errmsg:
-        return errmsg, 401
-
-    data = request.get_json()
-    print("Input: ", json.dumps(data))
-    util.process_bunq_accounts_callback(data)
-
-    return ""
 
 
 ###############################################################################

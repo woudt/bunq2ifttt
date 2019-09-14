@@ -77,25 +77,6 @@
                     {% endfor %}
                     {% endif %}
                     <br>
-                    {% if bunqkeymode == 'OAuth' %}Running in <b>master mode</b>.<br><br>{% endif %}
-                    {% if bunqkeymode == 'API key' %}
-                    {% if appmode == 'master' %}
-                    Running in <b>master mode</b>.<br>
-                    <a href="mode_slave" class="btn btn-primary">Switch to slave mode</a><br><br>
-                    {% endif %}
-                    {% if appmode == 'slave' %}
-                    Running in <b>slave mode</b>.<br>
-                    <a href="mode_master" class="btn btn-primary">Switch to master mode</a><br><br>
-                    <form action="/set_master_url" method="post">
-                        <div class="form-group">
-                            <label for="masterurl">URL of the master instance: {% if masterurl %}(current: {{masterurl}}){% endif %}</label>
-                            <input type="text" class="form-control" name="masterurl" id="masterurl" placeholder="Enter the new URL of the master instance here...">
-                        </div>
-                        <button type="submit" class="btn btn-primary">{% if masterurl %}Update{% else %}Submit{% endif %}</button>
-                    </form>
-                    <br>
-                    {% endif %}
-                    {% endif %}
                     <form action="/set_ifttt_service_key" method="post">
                         <div class="form-group">
                             <label for="iftttkey">IFTTT Service key: ({% if iftttkeyset %}already set{% else %}not yet set{% endif %})</label>

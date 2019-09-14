@@ -15,7 +15,6 @@ import base64
 import json
 import re
 import secrets
-import time
 import traceback
 
 import requests
@@ -53,18 +52,13 @@ def delete(endpoint, config={}):
 # Handle installation / registration of the API key
 #---------------------------------------------------
 
-def install(token, name=NAME, allips=False, urlroot=None):
+def install(token, name=NAME, allips=False, urlroot=None, mode=None):
     """ Handles the installation and registration of the API key """
     try:
-        storage.store_large("bunq2IFTTT", "oauth_expires", {
-            "timestamp": int(time.time()),
-            "triggers": [],
-        })
-
         oldconfig = {}
         retrieve_config(oldconfig)
 
-        config = {"access_token": token}
+        config = {"access_token": token, "mode": mode}
 
         if "private_key" not in config:
             generate_key(config)
@@ -76,9 +70,11 @@ def install(token, name=NAME, allips=False, urlroot=None):
 
         if urlroot is not None:
             register_callback(config, urlroot)
-            # TODO unregister old callbacks
 
         save_config(config)
+
+        if oldconfig["user_id"] != config["user_id"]:
+            unregister_callback(oldconfig)
 
     except:
         traceback.print_exc()
@@ -192,6 +188,13 @@ def register_callback(config, urlroot):
             "category": "REQUEST",
             "notification_target": urlroot + "/bunq2ifttt_request"
         }]
+    }, config)
+
+def unregister_callback(config):
+    """ Remove old callbacks when reauthorizing """
+    print("[bunq] Removing old notification filters...")
+    post("v1/user/{}/notification-filter-url".format(config["user_id"]), {
+        "notification_filters": []
     }, config)
 
 
