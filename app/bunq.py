@@ -59,22 +59,27 @@ def install(token, name=NAME, allips=False, urlroot=None, mode=None):
         retrieve_config(oldconfig)
 
         config = {"access_token": token, "mode": mode}
+        if "permissions" in oldconfig:
+            config["permissions"] = oldconfig["permissions"]
 
         if "private_key" not in config:
             generate_key(config)
             install_key(config)
 
         register_token(config, name, allips)
-        get_userid(config)
+        retrieve_userid(config)
         retrieve_accounts(config)
+        save_config(config)
 
         if urlroot is not None:
             register_callback(config, urlroot)
 
-        save_config(config)
-
-        if oldconfig["user_id"] != config["user_id"]:
+        # Unregister only when the user_id has changed (i.e. when using OAuth)
+        if urlroot is not None and "user_id" in oldconfig \
+                               and oldconfig["user_id"] != config["user_id"]:
             unregister_callback(oldconfig)
+
+        return config
 
     except:
         traceback.print_exc()
@@ -135,7 +140,7 @@ def register_token(config, name, allips):
     post("v1/device-server", data, config)
 
 
-def get_userid(config):
+def retrieve_userid(config):
     """ Retrieve the userid that needs to be used in api calls """
     print("[bunq] Retrieving userid...")
     result = get("v1/user", config)
@@ -143,8 +148,6 @@ def get_userid(config):
         for typ in user:
             userid = user[typ]["id"]
             config["user_id"] = userid
-            # XXX remove next line eventually
-            storage.store("config", "bunq_userid", {"value": userid})
 
 
 _TYPE_TRANSLATION = {
@@ -190,12 +193,22 @@ def register_callback(config, urlroot):
         }]
     }, config)
 
+
 def unregister_callback(config):
     """ Remove old callbacks when reauthorizing """
     print("[bunq] Removing old notification filters...")
-    post("v1/user/{}/notification-filter-url".format(config["user_id"]), {
-        "notification_filters": []
-    }, config)
+    old = get("v1/user/{}/notification-filter-url".format(config["user_id"]),
+              config)
+    new = {"notification_filters": []}
+    if "notification_filters" in old:
+        for noti in old["notification_filters"]:
+            if not noti["notification_target"].endswith("bunq2ifttt_mutation")\
+            and not noti["notification_target"].endswith("bunq2ifttt_request"):
+                new["notification_filters"].append(noti)
+    print("old: "+json.dumps(old))
+    print("new: "+json.dumps(new))
+    post("v1/user/{}/notification-filter-url".format(config["user_id"]),
+         new, config)
 
 
 # Credentials retrieval
@@ -211,10 +224,9 @@ def save_config(config):
             tosave[key] = config[key]
     storage.store_large("bunq2IFTTT", "bunq_config", tosave)
 
-def retrieve_config(config):
+def retrieve_config(config={}):
     """ Retrieve the configuration parameters from storage """
     for key in list(config.keys()):
-        print(key)
         del config[key]
     toload = storage.get_value("bunq2IFTTT", "bunq_config")
     if toload is not None:
@@ -233,6 +245,7 @@ def retrieve_config(config):
         config["private_key"] = serialization.load_pem_private_key(
             config["private_key_enc"].encode("ascii"),
             password=None, backend=default_backend())
+    return config
 
 
 def get_session_token(config):

@@ -104,10 +104,11 @@ def set_bunq_oauth_response():
         oauthdata["triggers"] = []
         storage.store_large("bunq2IFTTT", "bunq_oauth", oauthdata)
 
-        bunq.install(key, allips=oauthdata["allips"], urlroot=request.url_root,
-                     mode="OAuth")
+        config = bunq.install(key, allips=oauthdata["allips"],
+                              urlroot=request.url_root, mode="OAuth")
+        util.sync_permissions(config)
+        bunq.save_config(config)
 
-        util.update_bunq_accounts()
         return render_template("message.html", msgtype="success", msg=\
             'OAuth successfully setup <br><br>'\
             '<a href="/">Click here to return home</a>')
@@ -150,7 +151,8 @@ def set_bunq_oauth_api_key():
             try:
                 bunq.install(key, allips=allips, urlroot=request.url_root,
                              mode="APIkey")
-                util.update_bunq_accounts()
+                util.sync_permissions(config)
+                bunq.save_config(config)
                 return render_template("message.html", msgtype="success", msg=\
                     'API key successfully installed <br><br>'\
                     '<a href="/">Click here to return home</a>')

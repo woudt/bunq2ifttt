@@ -5,18 +5,11 @@ Mainly to handle storage and caching of some frequently used data elements
 """
 # pylint: disable=global-statement
 
-import base64
-
-from flask import request
-
 import bunq
 import storage
 
 # Use global variables as in-memory cache mechanisms
 _IFTTT_SERVICE_KEY = None
-_BUNQ_ACCOUNTS_LOCAL = None
-_BUNQ_ACCOUNTS_CALLBACK = None
-_BUNQ_USERID = None
 
 
 # WARNING: the follow setting is extremely dangerous to change !!!!!!!!!!!!!!!!
@@ -39,11 +32,11 @@ def save_session_cookie(value):
     storage.store("config", "session_cookie", {"value": value})
 
 
-def get_ifttt_service_key():
+def get_ifttt_service_key(key=None):
     """ Return the IFTTT service key, used to secure IFTTT calls """
     global _IFTTT_SERVICE_KEY
-    if _IFTTT_SERVICE_KEY is None:
-        entity = storage.retrieve("config", "ifttt_service_key")
+    if key not in [None, _IFTTT_SERVICE_KEY] or _IFTTT_SERVICE_KEY is None:
+        entity = storage.retrieve("bunq2IFTTT", "ifttt_service_key")
         if entity is not None:
             _IFTTT_SERVICE_KEY = entity["value"]
     return _IFTTT_SERVICE_KEY
@@ -52,274 +45,112 @@ def save_ifttt_service_key(value):
     """ Save the IFTTT service key, used to secure IFTTT calls """
     global _IFTTT_SERVICE_KEY
     _IFTTT_SERVICE_KEY = value
-    storage.store("config", "ifttt_service_key", {"value": value})
+    storage.store("bunq2IFTTT", "ifttt_service_key", {"value": value})
 
 
-def get_bunq_accounts_local():
-    """ Return the list of bunq accounts with local access """
-    global _BUNQ_ACCOUNTS_LOCAL
-    if _BUNQ_ACCOUNTS_LOCAL is None:
-        loaded = storage.query_all("account_local")
-        _BUNQ_ACCOUNTS_LOCAL = []
-        for acc in loaded:
-            _BUNQ_ACCOUNTS_LOCAL.append(acc["value"])
-        _BUNQ_ACCOUNTS_LOCAL = sorted(_BUNQ_ACCOUNTS_LOCAL,
-                                      key=lambda k: k["description"])
-    return _BUNQ_ACCOUNTS_LOCAL
-
-def get_bunq_accounts_callback():
-    """ Return the list of bunq accounts with a callback """
-    global _BUNQ_ACCOUNTS_CALLBACK
-    if _BUNQ_ACCOUNTS_CALLBACK is None:
-        loaded = storage.query_all("account_callback")
-        _BUNQ_ACCOUNTS_CALLBACK = []
-        for acc in loaded:
-            _BUNQ_ACCOUNTS_CALLBACK.append(acc["value"])
-        _BUNQ_ACCOUNTS_CALLBACK = sorted(_BUNQ_ACCOUNTS_CALLBACK,
-                                         key=lambda k: k["description"])
-    return _BUNQ_ACCOUNTS_CALLBACK
-
-def get_bunq_accounts_combined():
-    """ Return the combined list of bunq accounts """
-    accounts = []
-    accounts1 = get_bunq_accounts_local()
-    ibans1 = [acc["iban"] for acc in accounts1]
-    accounts2 = get_bunq_accounts_callback()
-    for acc1 in accounts1:
-        acc = acc1.copy()
-        acc["local"] = True
-        for acc2 in accounts2:
-            if acc["iban"] == acc2["iban"]:
-                acc["enableMutation"] = acc2["enableMutation"]
-                acc["enableRequest"] = acc2["enableRequest"]
-                acc["callbackMutation"] = acc2["callbackMutation"]
-                acc["callbackRequest"] = acc2["callbackRequest"]
-                if "callbackOther"in acc2:
-                    acc["callbackOther"] = acc2["callbackOther"]
-        accounts.append(acc)
-    for acc2 in accounts2:
-        if acc2["iban"] not in ibans1:
-            acc = acc2.copy()
-            acc["local"] = False
-            accounts.append(acc)
-    return accounts
-
-def change_account_enabled_local(iban, enabletype, value):
-    """ Change the enabled status of an action on an account """
-    global _BUNQ_ACCOUNTS_LOCAL
-    get_bunq_accounts_local()
-
-    if value not in ["true", "false"]:
-        print("Invalid value: {}".format(value))
-        return False
-    value = {'true': True, 'false': False}[value]
-
-    for acc in _BUNQ_ACCOUNTS_LOCAL:
+def is_valid_bunq_account(iban, permission=None, config=None):
+    """ Return whether the account is valid for the given permission """
+    accs = get_bunq_accounts(permission, config)
+    for acc in accs:
         if acc["iban"] == iban:
-            if enabletype in acc:
-                acc[enabletype] = value
-                return True
-            print("Type not found: {}".format(enabletype))
-            return False
-
-    print("IBAN not found: {}".format(iban))
+            return True
     return False
 
-def change_account_enabled_callback(iban, enabletype, value):
-    """ Change the enabled status of a callback on an account """
-    global _BUNQ_ACCOUNTS_CALLBACK
-    get_bunq_accounts_callback()
+def get_bunq_accounts(permission=None, config=None):
+    """ Return the list of accounts for the given permission """
+    if config is None:
+        config = bunq.retrieve_config()
+    result = []
+    for acc in config["accounts"]:
+        if permission is None or (acc["iban"] in config["permissions"] and \
+                           permission in config["permissions"][acc["iban"]] \
+                           and config["permissions"][acc["iban"]][permission]):
+            result.append(acc)
+    return result
+
+def get_bunq_accounts_with_permissions(config):
+    """ Return the list of accounts with permissions """
+    results = []
+    perms = {}
+    if "permissions" in config:
+        perms = config["permissions"]
+    for acc in config["accounts"]:
+        acc2 = acc.copy()
+        acc2["perms"] = {}
+        if acc["iban"] in perms:
+            for enable in perms[acc["iban"]]:
+                acc2["perms"][enable] = perms[acc["iban"]][enable]
+        results.append(acc2)
+    return results
+
+def update_bunq_accounts():
+    """ Update the list of bunq accounts """
+    config = bunq.retrieve_config()
+    bunq.retrieve_accounts(config)
+    sync_permissions(config)
+    bunq.save_config(config)
+
+def sync_permissions(config):
+    """ Synchronize permissions between the old and new account lists """
+    perms = config["permissions"] if "permissions" in config else {}
+    accs = config["accounts"]
+
+    # The default depends on the current setting:
+    # - if some have permissions for accounts have been explicitly disabled,
+    #   the default is to disable these for new accounts as well
+    # - if not, all permissions are by default enabled - except external
+    #   payments which are always disabled by default
+    defaults = {
+        "Internal": True,
+        "Draft": True,
+        "External": False,
+        "Mutation": True,
+        "Request": True,
+        "Card": True,
+    }
+    for iban in perms:
+        for perm in perms[iban]:
+            if not perms[iban][perm]:
+                defaults[perm] = False
+
+    # Set default permissions for new accounts / new permissions
+    ibans = []
+    for acc in accs:
+        iban = acc["iban"]
+        ibans.append(iban)
+        if iban not in perms:
+            perms[iban] = defaults.copy()
+        else:
+            for perm in defaults:
+                if perm not in perms[iban]:
+                    perms[iban][perm] = defaults[perm]
+
+    # Remove any old accounts
+    newperms = {}
+    for iban in perms:
+        if iban in ibans:
+            newperms[iban] = perms[iban]
+    config["permissions"] = newperms
+
+def account_change_permission(iban, permission, value):
+    """ Change a permission on an account """
+    if permission not in ["Internal", "Draft", "Mutation", "Request", "Card"] \
+    and not (permission == "External" and get_external_payment_enabled()):
+        print("Invalid permission: "+permission)
+        return False
 
     if value not in ["true", "false"]:
-        print("Invalid value: {}".format(value))
+        print("Invalid value: "+value)
         return False
-    value = {'true': True, 'false': False}[value]
+    value = (value == "true")
 
-    url_base = request.url_root
+    config = bunq.retrieve_config()
+    if "permissions" not in config:
+        config["permissions"] = {}
 
-    for acc in (x for x in _BUNQ_ACCOUNTS_CALLBACK if x["iban"] == iban):
-        if enabletype == "enableMutation" and enabletype in acc:
-            url_method = "bunq2ifttt_mutation"
-            cat = "MUTATION"
-        elif enabletype == "enableRequest" and enabletype in acc:
-            url_method = "bunq2ifttt_request"
-            cat = "REQUEST"
-        else:
-            print("Type not found: {}".format(enabletype))
-            return False
+    if iban not in config["permissions"]:
+        config["permissions"][iban] = {}
 
-        if not update_bunq_callback("{}/{}".format(acc["type"], acc["id"]),
-                                    cat, value, url_base, url_method):
-            return False
-        update_bunq_accounts()
-        return ""
-
-    print("IBAN not found: {}".format(iban))
-    return False
-
-def update_bunq_callback(accurl, cat, value, url_base, url_method):
-    """ Update the bunq callback """
-    res = bunq.get("v1/user/{}/{}".format(get_bunq_userid(), accurl))
-    for typ in res["Response"][0]:
-        data = res["Response"][0][typ]
-    filtered = []
-    if "notification_filters" in data:
-        for filt in data["notification_filters"]:
-            # keep anything not set by us
-            if filt["category"] != cat or \
-            not filt["notification_target"].endswith(url_method):
-                filtered.append(filt)
-    if value:
-        filtered.append({"notification_delivery_method": "URL",
-                         "notification_target": url_base + url_method,
-                         "category": cat})
-    print("New: ", filtered)
-    res = bunq.put("v1/user/{}/{}".format(get_bunq_userid(), accurl),
-                   {"notification_filters": filtered})
-    if 'Error' in res:
-        print("Result: ", res)
-        return False
+    config["permissions"][iban][permission] = value
+    bunq.save_config(config)
     return True
-
-_TYPE_TRANSLATION = {
-    "MonetaryAccountBank": "monetary-account-bank",
-    "MonetaryAccountJoint": "monetary-account-joint",
-    "MonetaryAccountSavings": "monetary-account-savings",
-}
-def update_bunq_accounts():
-    """ Update the list of bunq accounts for the user """
-    accounts_local = []
-    accounts_callback = []
-    result = bunq.get("v1/user/{}/monetary-account".format(get_bunq_userid()))
-    for res in result["Response"]:
-        for typ in res:
-            acc = res[typ]
-            type_url = _TYPE_TRANSLATION[typ]
-        if acc["status"] == "ACTIVE":
-            iban = None
-            for alias in acc["alias"]:
-                if alias["type"] == "IBAN":
-                    iban = alias["value"]
-                    name = alias["name"]
-            accinfo = {"iban": iban,
-                       "name": name,
-                       "type": type_url,
-                       "id": acc["id"],
-                       "description": acc["description"]}
-            accounts_local.append(accinfo.copy())
-            accinfo["enableMutation"] = False
-            accinfo["enableRequest"] = False
-            accinfo["callbackMutation"] = False
-            accinfo["callbackRequest"] = False
-            accinfo["callbackOther"] = []
-            if "notification_filters" in acc:
-                for noti in acc["notification_filters"]:
-                    url = noti["notification_target"]
-                    if noti["category"] == "MUTATION" and \
-                    noti["notification_target"]\
-                    .endswith("/bunq2ifttt_mutation"):
-                        accinfo["enableMutation"] = True
-                        accinfo["callbackMutation"] = url
-                    elif noti["category"] == "REQUEST" and \
-                    noti["notification_target"]\
-                    .endswith("/bunq2ifttt_request"):
-                        accinfo["enableRequest"] = True
-                        accinfo["callbackRequest"] = url
-                    else:
-                        accinfo["callbackOther"].append(\
-                            {"cat": noti["category"],
-                             "url": url,
-                             "b64url": base64.urlsafe_b64encode(\
-                                 url.encode("utf-8")).decode("ascii")})
-            accounts_callback.append(accinfo)
-
-    process_bunq_accounts_local(accounts_local)
-
-
-def process_bunq_accounts_local(accounts):
-    """ Process retrieved bunq accounts with the local dataset of accounts """
-    global _BUNQ_ACCOUNTS_LOCAL
-    get_bunq_accounts_local()
-
-    default_internal = True
-    default_draft = True
-    for acc in _BUNQ_ACCOUNTS_LOCAL:
-        # leave defaults True only if all existing accounts have True
-        default_internal &= acc["enableInternal"]
-        default_draft &= acc["enableDraft"]
-
-    for acc2 in accounts:
-        found = False
-        for acc in _BUNQ_ACCOUNTS_LOCAL:
-            if acc["iban"] == acc2["iban"]:
-                # update account
-                found = True
-                acc["id"] = acc2["id"]
-                acc["name"] = acc2["name"]
-                acc["type"] = acc2["type"]
-                acc["description"] = acc2["description"]
-                storage.store("account_local", acc["iban"], {"value": acc})
-        if not found:
-            # new account
-            acc2["enableInternal"] = default_internal
-            acc2["enableDraft"] = default_draft
-            acc2["enableExternal"] = False
-            storage.store("account_local", acc2["iban"], {"value": acc2})
-            _BUNQ_ACCOUNTS_LOCAL.append(acc2)
-
-    # remove deleted
-    newaccs = []
-    ibans = [x["iban"] for x in accounts]
-    for acc in _BUNQ_ACCOUNTS_LOCAL:
-        if acc["iban"] in ibans:
-            newaccs.append(acc)
-        else:
-            storage.remove("account_local", acc["iban"])
-    _BUNQ_ACCOUNTS_LOCAL = sorted(newaccs, key=lambda k: k["description"])
-
-def process_bunq_accounts_callback(accounts):
-    """ Process bunq accounts with the callback dataset of accounts """
-    global _BUNQ_ACCOUNTS_CALLBACK
-    get_bunq_accounts_callback()
-
-    for acc2 in accounts:
-        found = False
-        for acc in _BUNQ_ACCOUNTS_CALLBACK:
-            if acc["iban"] == acc2["iban"]:
-                # update account
-                found = True
-                acc["id"] = acc2["id"]
-                acc["name"] = acc2["name"]
-                acc["type"] = acc2["type"]
-                acc["description"] = acc2["description"]
-                acc["enableMutation"] = acc2["enableMutation"]
-                acc["enableRequest"] = acc2["enableRequest"]
-                acc["callbackMutation"] = acc2["callbackMutation"]
-                acc["callbackRequest"] = acc2["callbackRequest"]
-                if "callbackOther" in acc2:
-                    acc["callbackOther"] = acc2["callbackOther"]
-                else:
-                    acc["callbackOther"] = []
-                storage.store("account_callback", acc["iban"], {"value": acc})
-        if not found:
-            # new account
-            storage.store("account_callback", acc2["iban"], {"value": acc2})
-            _BUNQ_ACCOUNTS_CALLBACK.append(acc2)
-
-    # remove deleted
-    newaccs = []
-    ibans = [x["iban"] for x in accounts]
-    for acc in _BUNQ_ACCOUNTS_CALLBACK:
-        if acc["iban"] in ibans:
-            newaccs.append(acc)
-        else:
-            storage.remove("account_callback", acc["iban"])
-    _BUNQ_ACCOUNTS_CALLBACK = sorted(newaccs, key=lambda k: k["description"])
-
-
-def get_bunq_userid():
-    """ Return the bunq userid """
-    global _BUNQ_USERID
-    if _BUNQ_USERID is None:
-        _BUNQ_USERID = storage.retrieve("config", "bunq_userid")["value"]
-    return _BUNQ_USERID

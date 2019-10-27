@@ -42,6 +42,10 @@ def bunq_callback_request():
             return 200
 
         iban = obj["alias"]["iban"]
+        if not util.is_valid_bunq_account(iban, "Request"):
+            print("[bunqcb_request] trigger not enabled for this account")
+            return 200
+
         item = {
             "created_at": obj["created"],
             "date": arrow.get(obj["created"]).format("YYYY-MM-DD"),
@@ -104,6 +108,10 @@ def bunq_callback_mutation():
             return 200
 
         iban = payment["alias"]["iban"]
+        if not util.is_valid_bunq_account(iban, "Mutation"):
+            print("[bunqcb_mutation] trigger not enabled for this account")
+            return 200
+
         item = {
             "created_at": payment["created"],
             "date": arrow.get(payment["created"]).format("YYYY-MM-DD"),
@@ -148,9 +156,8 @@ def bunq_callback_mutation():
         print("Matched mutation triggers:", json.dumps(triggerids_1))
         print("Matched balance triggers:", json.dumps(triggerids_2))
         data = {"data": []}
-        for triggerids in [triggerids_1, triggerids_2]:
-            for triggerid in triggerids:
-                data["data"].append({"trigger_identity": triggerid})
+        for triggerid in triggerids_1 + triggerids_2:
+            data["data"].append({"trigger_identity": triggerid})
         if data["data"]:
             headers = {
                 "IFTTT-Channel-Key": util.get_ifttt_service_key(),
@@ -741,7 +748,6 @@ def trigger_oauth_expires():
         if "trigger_identity" not in data:
             print("[trigger_oauthexp] ERROR: trigger_identity field missing!")
             return json.dumps({"errors": [{"message": "Invalid data"}]}), 400
-        identity = data["trigger_identity"]
 
         limit = 50
         if "limit" in data:
