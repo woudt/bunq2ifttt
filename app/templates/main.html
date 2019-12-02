@@ -21,76 +21,47 @@
             </div>
             <div class="row">
                 <div class="col-12">
+                    {% if oauth_expiry %}
+                    <a href="/bunq_oauth_reauthorize" class="btn btn-primary">Reauthorize</a>
+                    Current expiration: {{ oauth_expiry }}
+                    <br><br>
+                    {% endif %}
                     <b>Accounts configured for actions:</b> [<a href="/update_accounts">update</a>]<br>
                     {% if accounts %}
                     {% for acc in accounts %}{{ acc.iban }} {{ acc.description }}<br>
-                    {% if appmode == 'master' %}
-                    {% if acc.local %}
-                    - Internal payment:
-                      {% if acc.enableInternal %}enabled{% else %}disabled{% endif %}
-                      [<a href="/account_change_internal?iban={{ acc.iban }}&value={% if acc.enableInternal %}false{% else %}true{% endif %}">change</a>]
-                      <br>
-                    - Draft payment:
-                      {% if acc.enableDraft %}enabled{% else %}disabled{% endif %}
-                      [<a href="/account_change_draft?iban={{ acc.iban }}&value={% if acc.enableDraft %}false{% else %}true{% endif %}">change</a>]
-                      <br>
-                    - External payment:
+                    <table>
+                    <tr><td>- Internal payment:</td><td>
+                      {% if acc.perms.Internal %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=Internal&iban={{ acc.iban }}&value={% if acc.perms.Internal %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    <tr><td>- Draft payment:</td><td>
+                      {% if acc.perms.Draft %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=Draft&iban={{ acc.iban }}&value={% if acc.perms.Draft %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    <tr><td>- External payment:</td><td>
                       {% if enableexternal %}
-                      {% if acc.enableExternal %}enabled{% else %}disabled{% endif %}
-                      [<a href="/account_change_external?iban={{ acc.iban }}&value={% if acc.enableExternal %}false{% else %}true{% endif %}">change</a>]
+                      {% if acc.perms.External %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=External&iban={{ acc.iban }}&value={% if acc.perms.External %}false{% else %}true{% endif %}">change</a>]
                       {% else %}
                       [globally disabled]
                       {% endif %}
-                      <br>
-                    {% endif %}
-                    {% endif %}
-                    - Mutation/Balance triggers:
-                      {% if acc.enableMutation %}enabled{% else %}disabled{% endif %}
-                      {% if bunqkeymode == 'API key' %}
-                      [<a href="/account_change_mutation?iban={{ acc.iban }}&value={% if acc.enableMutation %}false{% else %}true{% endif %}">change</a>]
-                      {% else %}
-                      [set by slave]
-                      {% endif %}
-                      {% if acc.enableMutation %}{{ acc.callbackMutation }}{% endif %}
-                      <br>
-                    - Request trigger:
-                      {% if acc.enableRequest %}enabled{% else %}disabled{% endif %}
-                      {% if bunqkeymode == 'API key' %}
-                      [<a href="/account_change_request?iban={{ acc.iban }}&value={% if acc.enableRequest %}false{% else %}true{% endif %}">change</a>]
-                      {% else %}
-                      [set by slave]
-                      {% endif %}
-                      {% if acc.enableRequest %}{{ acc.callbackRequest }}{% endif %}
-                      <br>
-                    {% if acc.callbackOther %}
-                    - Other callbacks:<br>
-                    {% for other in acc.callbackOther %}
-                    &nbsp;&nbsp;&nbsp;&nbsp;{{ other.cat }} {{ other.url }}
-                    [<a href="/remove_other_callback?iban={{ acc.iban }}&cat={{ other.cat }}&url={{ other.b64url }}">remove</a>]<br>
-                    {% endfor %}
-                    {% endif %}
+                    </td></tr>
+                    <tr><td>- Change card account:</td><td>
+                      {% if acc.perms.Card %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=Card&iban={{ acc.iban }}&value={% if acc.perms.Card %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    <tr><td>- Mutation/Balance triggers:</td><td>
+                      {% if acc.perms.Mutation %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=Mutation&iban={{ acc.iban }}&value={% if acc.perms.Mutation %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    <tr><td>- Request trigger:</td><td>
+                      {% if acc.perms.Request %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=Request&iban={{ acc.iban }}&value={% if acc.perms.Request %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    </table>
                     {% endfor %}
                     {% endif %}
                     <br>
-                    {% if bunqkeymode == 'OAuth' %}Running in <b>master mode</b>.<br><br>{% endif %}
-                    {% if bunqkeymode == 'API key' %}
-                    {% if appmode == 'master' %}
-                    Running in <b>master mode</b>.<br>
-                    <a href="mode_slave" class="btn btn-primary">Switch to slave mode</a><br><br>
-                    {% endif %}
-                    {% if appmode == 'slave' %}
-                    Running in <b>slave mode</b>.<br>
-                    <a href="mode_master" class="btn btn-primary">Switch to master mode</a><br><br>
-                    <form action="/set_master_url" method="post">
-                        <div class="form-group">
-                            <label for="masterurl">URL of the master instance: {% if masterurl %}(current: {{masterurl}}){% endif %}</label>
-                            <input type="text" class="form-control" name="masterurl" id="masterurl" placeholder="Enter the new URL of the master instance here...">
-                        </div>
-                        <button type="submit" class="btn btn-primary">{% if masterurl %}Update{% else %}Submit{% endif %}</button>
-                    </form>
-                    <br>
-                    {% endif %}
-                    {% endif %}
                     <form action="/set_ifttt_service_key" method="post">
                         <div class="form-group">
                             <label for="iftttkey">IFTTT Service key: ({% if iftttkeyset %}already set{% else %}not yet set{% endif %})</label>

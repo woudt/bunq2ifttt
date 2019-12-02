@@ -5,9 +5,12 @@ Main module serving the pages for the bunq2IFTTT appengine app
 import json
 import os
 
+import arrow
+
 from flask import Flask, request, render_template
 
 import auth
+import bunq
 import card
 import event
 import payment
@@ -29,18 +32,26 @@ def home_get():
     cookie = request.cookies.get('session')
     if cookie is None or cookie != util.get_session_cookie():
         return render_template("start.html")
-    iftttkeyset = (util.get_ifttt_service_key() is not None)
-    bunqkeymode = util.get_bunq_security_mode()
-    accounts = util.get_bunq_accounts_combined()
-    appmode = util.get_app_mode()
-    masterurl = util.get_app_master_url()
+
+    config = bunq.retrieve_config()
+    bunqkeymode = config.get("mode")
+
+    iftttkeyset = (util.get_ifttt_service_key("") is not None)
+    accounts = util.get_bunq_accounts_with_permissions(config)
     enableexternal = util.get_external_payment_enabled()
+    bunq_oauth = storage.get_value("bunq2IFTTT", "bunq_oauth")
+    if bunq_oauth is not None and bunqkeymode != "APIkey":
+        expire = arrow.get(bunq_oauth["timestamp"] + 90*24*3600)
+        oauth_expiry = "{} ({})".format(expire.humanize(), expire.isoformat())
+    else:
+        oauth_expiry = None
     # Google AppEngine does not provide fixed ip addresses
     defaultallips = (os.getenv("GAE_INSTANCE") is not None)
+
     return render_template("main.html",\
         iftttkeyset=iftttkeyset, bunqkeymode=bunqkeymode, accounts=accounts,\
-        appmode=appmode, masterurl=masterurl, enableexternal=enableexternal,\
-        defaultallips=defaultallips)
+        enableexternal=enableexternal, defaultallips=defaultallips,\
+        oauth_expiry=oauth_expiry)
 
 
 @app.route("/login", methods=["POST"])
@@ -67,6 +78,15 @@ def set_bunq_oauth_api_key():
             "Invalid request: session cookie not set or not valid")
     return auth.set_bunq_oauth_api_key()
 
+@app.route("/bunq_oauth_reauthorize", methods=["GET"])
+def bunq_oauth_reauthorize():
+    """ Endpoint to reauthorize OAuth with bunq """
+    cookie = request.cookies.get('session')
+    if cookie is None or cookie != util.get_session_cookie():
+        return render_template("message.html", msgtype="danger", msg=\
+            "Invalid request: session cookie not set or not valid")
+    return auth.bunq_oauth_reauthorize()
+
 @app.route("/auth", methods=["GET"])
 def set_bunq_oauth_response():
     """ Endpoint for the bunq OAuth response """
@@ -88,159 +108,22 @@ def update_accounts():
         'Account update completed<br><br>'\
         '<a href="/">Click here to return home</a>')
 
-@app.route("/mode_master", methods=["GET"])
-def mode_master():
-    """ Endpoint to switch to master mode """
+@app.route("/account_change_permission", methods=["GET"])
+def account_change_permission():
+    """ Enable/disable a permissions for an account """
     cookie = request.cookies.get('session')
     if cookie is None or cookie != util.get_session_cookie():
         return render_template("message.html", msgtype="danger", msg=\
             "Invalid request: session cookie not set or not valid")
-    util.save_app_mode('master')
-    return render_template("message.html", msgtype="success", msg=\
-        'Master mode set<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/account_change_internal", methods=["GET"])
-def account_change_internal():
-    """ Enable/disable an account for internal payments """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    if util.change_account_enabled_local(request.args["iban"],
-                                         "enableInternal",
-                                         request.args["value"]):
+    if util.account_change_permission(request.args["iban"],
+                                      request.args["permission"],
+                                      request.args["value"]):
         return render_template("message.html", msgtype="success", msg=\
             'Status changed<br><br>'\
             '<a href="/">Click here to return home</a>')
     return render_template("message.html", msgtype="danger", msg=\
         'Something went wrong, please check the logs!<br><br>'\
         '<a href="/">Click here to return home</a>')
-
-@app.route("/account_change_draft", methods=["GET"])
-def account_change_draft():
-    """ Enable/disable an account for draft payments """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    if util.change_account_enabled_local(request.args["iban"],
-                                         "enableDraft",
-                                         request.args["value"]):
-        return render_template("message.html", msgtype="success", msg=\
-            'Status changed<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    return render_template("message.html", msgtype="danger", msg=\
-        'Something went wrong, please check the logs!<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/account_change_external", methods=["GET"])
-def account_change_external():
-    """ Enable/disable an account for external payments """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    if not util.get_external_payment_enabled():
-        return render_template("message.html", msgtype="danger", msg=\
-            'External payments are disabled!<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    if util.change_account_enabled_local(request.args["iban"],
-                                         "enableExternal",
-                                         request.args["value"]):
-        return render_template("message.html", msgtype="success", msg=\
-            'Status changed<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    return render_template("message.html", msgtype="danger", msg=\
-        'Something went wrong, please check the logs!<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/account_change_mutation", methods=["GET"])
-def account_change_mutation():
-    """ Enable/disable an account for mutation/balance triggers """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    if util.get_bunq_security_mode() == "OAuth":
-        return render_template("message.html", msgtype="danger", msg=\
-            'Callbacks can only be set with an API key!<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    if util.change_account_enabled_callback(request.args["iban"],
-                                            "enableMutation",
-                                            request.args["value"]):
-        return render_template("message.html", msgtype="success", msg=\
-            'Status changed<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    return render_template("message.html", msgtype="danger", msg=\
-        'Something went wrong, please check the logs!<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/account_change_request", methods=["GET"])
-def account_change_request():
-    """ Enable/disable an account for request triggers """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    if util.get_bunq_security_mode() == "OAuth":
-        return render_template("message.html", msgtype="danger", msg=\
-            'Callbacks can only be set with an API key!<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    if util.change_account_enabled_callback(request.args["iban"],
-                                            "enableRequest",
-                                            request.args["value"]):
-        return render_template("message.html", msgtype="success", msg=\
-            'Status changed<br><br>'\
-            '<a href="/">Click here to return home</a>')
-    return render_template("message.html", msgtype="danger", msg=\
-        'Something went wrong, please check the logs!<br><br>'\
-        '<a href="/">Click here to return home</a>')
-
-@app.route("/mode_slave", methods=["GET"])
-def mode_slave():
-    """ Endpoint to switch to slave mode """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    util.save_app_mode('slave')
-    return render_template("message.html", msgtype="success", msg=\
-        'Slave mode set<br><br>'\
-        '<a href="/">Click here to return home</a><br>'\
-        'Please make sure to set the URL to the master instance!')
-
-@app.route("/set_master_url", methods=["POST"])
-def set_master_url():
-    """ Endpoint to set the master URL used in slave mode """
-    cookie = request.cookies.get('session')
-    if cookie is None or cookie != util.get_session_cookie():
-        return render_template("message.html", msgtype="danger", msg=\
-            "Invalid request: session cookie not set or not valid")
-    url = request.form["masterurl"]
-    if not url.startswith("http://") and not url.startswith("https://"):
-        return render_template("message.html", msgtype="danger", msg=\
-            'Invalid URL, it doesnt start with http(s)://<br><br>'\
-            '<a href="/">Click here to return home</a><br>')
-    if not url.endswith("/"):
-        url += "/"
-    util.save_app_master_url(url)
-    return render_template("message.html", msgtype="success", msg=\
-        'Master URL set<br><br>'\
-        '<a href="/">Click here to return home</a><br>')
-
-@app.route("/account_callback", methods=["POST"])
-def account_callback():
-    """ Callback for submitting account info from a slave """
-    errmsg = check_ifttt_service_key()
-    if errmsg:
-        return errmsg, 401
-
-    data = request.get_json()
-    print("Input: ", json.dumps(data))
-    util.process_bunq_accounts_callback(data)
-
-    return ""
 
 
 ###############################################################################
@@ -249,9 +132,10 @@ def account_callback():
 
 def check_ifttt_service_key():
     """ Helper method to check the IFTTT-Service-Key header """
-    if "IFTTT-Service-Key" not in request.headers or \
-            request.headers["IFTTT-Service-Key"] \
-            != util.get_ifttt_service_key():
+    if "IFTTT-Service-Key" not in request.headers:
+        return json.dumps({"errors": [{"message": "Missing IFTTT key"}]})
+    if request.headers["IFTTT-Service-Key"] \
+    != util.get_ifttt_service_key(request.headers["IFTTT-Service-Key"]):
         return json.dumps({"errors": [{"message": "Invalid IFTTT key"}]})
     return None
 
@@ -359,6 +243,9 @@ def ifttt_test_setup():
                         "description_comparator_2": "not_equal",
                         "description_value_2": "Foo bar",
                     },
+                    "bunq_oauth_expires": {
+                        "hours": "9876543210",
+                    }
                 },
                 "actions": {
                     "bunq_internal_payment": {
@@ -553,54 +440,52 @@ def ifttt_type_options(first):
            "account/options", methods=["POST"])
 def ifttt_account_options_mutation():
     """ Option values for mutation/balance trigger account selection"""
-    return ifttt_account_options(True, False, "enableMutation")
+    return ifttt_account_options(True, "Mutation")
 
 @app.route("/ifttt/v1/triggers/bunq_request/fields/"\
            "account/options", methods=["POST"])
 def ifttt_account_options_request():
     """ Option values for request trigger account selection"""
-    return ifttt_account_options(True, False, "enableRequest")
+    return ifttt_account_options(True, "Request")
 
 @app.route("/ifttt/v1/actions/bunq_internal_payment/fields/"\
            "source_account/options", methods=["POST"])
 def ifttt_account_options_internal_source():
     """ Option values for internal payment source account selection"""
-    return ifttt_account_options(False, True, "enableInternal")
+    return ifttt_account_options(False, "Internal")
 
 @app.route("/ifttt/v1/actions/bunq_internal_payment/fields/"\
            "target_account/options", methods=["POST"])
 def ifttt_account_options_internal_target():
     """ Option values for internal payment target account selection"""
-    return ifttt_account_options(False, True, None)
+    return ifttt_account_options(False, None)
 
 @app.route("/ifttt/v1/actions/bunq_draft_payment/fields/"\
            "source_account/options", methods=["POST"])
 def ifttt_account_options_draft():
     """ Option values for draft payment source account selection"""
-    return ifttt_account_options(False, True, "enableDraft")
+    return ifttt_account_options(False, "Draft")
 
 @app.route("/ifttt/v1/actions/bunq_external_payment/fields/"\
            "source_account/options", methods=["POST"])
 def ifttt_account_options_external():
     """ Option values for draft payment source account selection"""
-    return ifttt_account_options(False, True, "enableExternal")
+    return ifttt_account_options(False, "External")
 
 @app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
            "account/options", methods=["POST"])
 def ifttt_account_options_change_card():
     """ Option values for change card account selection"""
-    return ifttt_account_options(False, True, None)
+    return ifttt_account_options(False, "Card")
 
-def ifttt_account_options(include_any, local, enable_key):
+def ifttt_account_options(include_any, enable_key):
     """ Option values for account selection """
     errmsg = check_ifttt_service_key()
     if errmsg:
         return errmsg, 401
 
-    if local:
-        accounts = util.get_bunq_accounts_local()
-    else:
-        accounts = util.get_bunq_accounts_callback()
+    config = bunq.retrieve_config()
+    accounts = util.get_bunq_accounts_with_permissions(config)
 
     if include_any:
         data = {"data": [{"label": "ANY", "value": "ANY"}]}
@@ -608,7 +493,8 @@ def ifttt_account_options(include_any, local, enable_key):
         data = {"data": []}
 
     for acc in accounts:
-        if enable_key is None or acc[enable_key]:
+        if enable_key is None or (enable_key in acc["perms"] and
+                                  acc["perms"][enable_key]):
             ibanstr = acc["iban"]
             iban_formatted = ""
             while len(ibanstr) > 4:
@@ -704,6 +590,23 @@ def trigger_request_delete(triggerid):
     if errmsg:
         return errmsg, 401
     return event.trigger_request_delete(triggerid)
+
+@app.route("/ifttt/v1/triggers/bunq_oauth_expires", methods=["POST"])
+def trigger_oauth_expires():
+    """ Retrieve bunq_oauth_expires trigger items """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return event.trigger_oauth_expires()
+
+@app.route("/ifttt/v1/triggers/bunq_oauth_expires/trigger_identity/"\
+           "<triggerid>", methods=["DELETE"])
+def trigger_oauth_expires_delete(triggerid):
+    """ Delete a trigger_identity for the bunq_oauth_expires trigger """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return event.trigger_oauth_expires_delete(triggerid)
 
 
 ###############################################################################

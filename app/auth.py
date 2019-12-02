@@ -10,6 +10,7 @@ import base64
 import hashlib
 import re
 import secrets
+import time
 import traceback
 
 import requests
@@ -82,28 +83,32 @@ def set_ifttt_service_key():
 def set_bunq_oauth_response():
     """ Handles the bunq OAuth redirect """
     try:
+        oauthdata = storage.get_value("bunq2IFTTT", "bunq_oauth_new")
+
         code = request.args["code"]
         if len(code) != 64:
             print("Invalid code: ", code)
             return render_template("message.html", msgtype="danger", msg=\
                 'Invalid code! <br><br>'\
                 '<a href="/">Click here to try again</a>')
+
         url = "https://api.oauth.bunq.com/v1/token?grant_type="\
               "authorization_code&code={}&redirect_uri={}"\
               "&client_id={}&client_secret={}"\
-              .format(code,
-                      request.url_root + "auth",
-                      storage.retrieve("config", "bunq_client_id")["value"],
-                      storage.retrieve("config", "bunq_client_secret")["value"]
-                     )
+              .format(code, request.url_root + "auth",
+                      oauthdata["client_id"], oauthdata["client_secret"])
         req = requests.post(url)
         key = req.json()["access_token"]
-        allips = storage.retrieve("config", "bunq_allips")["value"]
-        bunq.install(key, allips=allips)
-        util.save_bunq_security_mode("OAuth")
-        util.save_app_mode("master")
-        util.retrieve_and_save_bunq_userid()
-        util.update_bunq_accounts()
+
+        oauthdata["timestamp"] = int(time.time())
+        oauthdata["triggers"] = []
+        storage.store_large("bunq2IFTTT", "bunq_oauth", oauthdata)
+
+        config = bunq.install(key, allips=oauthdata["allips"],
+                              urlroot=request.url_root, mode="OAuth")
+        util.sync_permissions(config)
+        bunq.save_config(config)
+
         return render_template("message.html", msgtype="success", msg=\
             'OAuth successfully setup <br><br>'\
             '<a href="/">Click here to return home</a>')
@@ -117,17 +122,21 @@ def set_bunq_oauth_response():
 def set_bunq_oauth_api_key():
     """ Handles bunq OAuth id/secret submission or API key submission """
     try:
-        key = request.form["bunqkey"]
         allips = False
         if "allips" in request.form and request.form["allips"] == 'on':
             allips = True
-        print("allips:", allips)
+
+        key = request.form["bunqkey"]
         tokens = re.split("[:, \r\n\t]+", key.strip())
+
         if len(tokens) == 6 and len(tokens[2]) == 64 and len(tokens[5]) == 64:
             # OAuth client id/secret submitted
-            storage.store("config", "bunq_client_id", {"value": tokens[2]})
-            storage.store("config", "bunq_client_secret", {"value": tokens[5]})
-            storage.store("config", "bunq_allips", {"value": allips})
+            oauthdata = {
+                "client_id": tokens[2],
+                "client_secret": tokens[5],
+                "allips": allips,
+            }
+            storage.store_large("bunq2IFTTT", "bunq_oauth_new", oauthdata)
             redirect_url = request.url_root + "auth"
             url = "https://oauth.bunq.com/auth?response_type=code"\
                   "&client_id=" + tokens[2] + \
@@ -136,13 +145,14 @@ def set_bunq_oauth_api_key():
                 "Make sure the following URL is included as a redirect url:"\
                 "<br><br><b>" + redirect_url + "</b><br><br>"\
                 'Then click <a href="' + url + '">this link</a>')
+
         if len(tokens) == 1 and len(tokens[0]) == 64:
             # API key submitted
             try:
-                bunq.install(key, allips=allips)
-                util.save_bunq_security_mode("API key")
-                util.retrieve_and_save_bunq_userid()
-                util.update_bunq_accounts()
+                config = bunq.install(key, allips=allips,
+                                      urlroot=request.url_root, mode="APIkey")
+                util.sync_permissions(config)
+                bunq.save_config(config)
                 return render_template("message.html", msgtype="success", msg=\
                     'API key successfully installed <br><br>'\
                     '<a href="/">Click here to return home</a>')
@@ -161,3 +171,16 @@ def set_bunq_oauth_api_key():
         return render_template("message.html", msgtype="danger", msg=\
             'An unknown exception occurred. See the logs. <br><br>'\
             '<a href="/">Click here to return home</a>')
+
+def bunq_oauth_reauthorize():
+    """ Reauthorize OAuth using the same client id/secret """
+    oauthdata = storage.get_value("bunq2IFTTT", "bunq_oauth")
+    storage.store_large("bunq2IFTTT", "bunq_oauth_new", oauthdata)
+    redirect_url = request.url_root + "auth"
+    url = "https://oauth.bunq.com/auth?response_type=code"\
+          "&client_id=" + oauthdata["client_id"] + \
+          "&redirect_uri=" + redirect_url
+    return render_template("message.html", msgtype="primary", msg=\
+        "Make sure the following URL is included as a redirect url:"\
+        "<br><br><b>" + redirect_url + "</b><br><br>"\
+        'Then click <a href="' + url + '">this link</a>')

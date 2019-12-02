@@ -13,7 +13,7 @@ import bunq
 import util
 
 
-def create_payment_message(internal, fields):
+def create_payment_message(internal, fields, config):
     """ Get the payment message """
 
     # check for required fields
@@ -48,7 +48,7 @@ def create_payment_message(internal, fields):
     # for internal payments we need to find the target account name
     if internal:
         target_name = None
-        for acc in util.get_bunq_accounts_local():
+        for acc in config["accounts"]:
             if acc["iban"] == fields["target_account"]:
                 target_name = acc["name"]
         if target_name is None:
@@ -75,8 +75,28 @@ def create_payment_message(internal, fields):
     return payment
 
 
+def check_source_account(internal, draft, config, iban):
+    """ Find the source account id and check if payment is allowed """
+    for acc in config["accounts"]:
+        if acc["iban"] == iban:
+            source_accid = acc["id"]
+
+    result = False
+    if "permissions" in config:
+        if iban in config["permissions"]:
+            if internal and "Internal" in config["permissions"][iban]:
+                result = config["permissions"][iban]["Internal"]
+            elif draft and "Draft" in config["permissions"][iban]:
+                result = config["permissions"][iban]["Draft"]
+            elif "External" in config["permissions"][iban]:
+                result = config["permissions"][iban]["External"]
+
+    return source_accid, result
+
+
 def ifttt_bunq_payment(internal, draft):
     """ Execute a draft, internal or external payment """
+    config = bunq.retrieve_config()
     data = request.get_json()
     print("[action_payment] input: {}".format(json.dumps(data)))
 
@@ -93,23 +113,18 @@ def ifttt_bunq_payment(internal, draft):
 
     # get the payment message
     fields = data["actionFields"]
-    msg = create_payment_message(internal, fields)
+    msg = create_payment_message(internal, fields, config)
     if "errors" in msg or "data" in msg: # error or test payment
         return json.dumps(msg), 400 if "errors" in msg else 200
 
     # find the source account id
-    source_accid = None
-    for acc in util.get_bunq_accounts_local():
-        if acc["iban"] == fields["source_account"]:
-            source_accid = acc["id"]
-            print(internal, draft)
-            print(acc)
-            if (internal and not acc["enableInternal"])\
-            or (draft and not acc["enableDraft"])\
-            or (not internal and not draft and not acc["enableExternal"]):
-                errmsg = "Payment type not enabled for account: "+acc["iban"]
+    source_accid, enabled = check_source_account(internal, draft, config,
+                                                 fields["source_account"])
     if source_accid is None:
         errmsg = "unknown source account: "+fields["source_account"]
+    if not enabled:
+        errmsg = "Payment type not enabled for account: "+\
+                 fields["source_account"]
 
     if errmsg:
         print("[action_payment] ERROR: "+errmsg)
@@ -120,10 +135,10 @@ def ifttt_bunq_payment(internal, draft):
     if draft:
         msg = {"number_of_required_accepts": 1, "entries": [msg]}
         result = bunq.post("v1/user/{}/monetary-account/{}/draft-payment"
-                           .format(util.get_bunq_userid(), source_accid), msg)
+                           .format(config["user_id"], source_accid), msg)
     else:
         result = bunq.post("v1/user/{}/monetary-account/{}/payment"
-                           .format(util.get_bunq_userid(), source_accid), msg)
+                           .format(config["user_id"], source_accid), msg)
     print(result)
     if "Error" in result:
         return json.dumps({"errors": [{

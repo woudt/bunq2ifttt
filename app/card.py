@@ -15,7 +15,8 @@ import bunq
 
 def get_bunq_cards():
     """ Return the list of bunq cards """
-    data = bunq.get("v1/user/{}/card".format(util.get_bunq_userid()))
+    config = bunq.retrieve_config()
+    data = bunq.get("v1/user/{}/card".format(config["user_id"]), config)
     results = []
     for item in data["Response"]:
         for typ in item:
@@ -57,7 +58,7 @@ def change_card_account():
         return json.dumps({"data": [{"id": uuid.uuid4().hex}]})
 
     accountid = None
-    for acc in util.get_bunq_accounts_local():
+    for acc in util.get_bunq_accounts("Card"):
         if acc["iban"] == fields["account"]:
             accountid = acc["id"]
     if accountid is None:
@@ -70,8 +71,9 @@ def change_card_account():
         "type": "PRIMARY",
         "monetary_account_id": int(accountid),
     }]}
+    config = bunq.retrieve_config()
     res = bunq.session_request_encrypted("PUT", "v1/user/{}/card/{}".format(
-        util.get_bunq_userid(), fields["card"]), data)
+        config["user_id"], fields["card"]), data, config)
     if "Error" in res:
         print(json.dumps(res))
         errmsg = "Bunq API call failed, see the logs!"
