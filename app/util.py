@@ -74,13 +74,14 @@ def get_bunq_accounts_with_permissions(config):
     perms = {}
     if "permissions" in config:
         perms = config["permissions"]
-    for acc in config["accounts"]:
-        acc2 = acc.copy()
-        acc2["perms"] = {}
-        if acc["iban"] in perms:
-            for enable in perms[acc["iban"]]:
-                acc2["perms"][enable] = perms[acc["iban"]][enable]
-        results.append(acc2)
+    if "accounts" in config:
+        for acc in config["accounts"]:
+            acc2 = acc.copy()
+            acc2["perms"] = {}
+            if acc["iban"] in perms:
+                for enable in perms[acc["iban"]]:
+                    acc2["perms"][enable] = perms[acc["iban"]][enable]
+            results.append(acc2)
     return results
 
 def update_bunq_accounts():
