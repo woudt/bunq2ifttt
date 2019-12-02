@@ -149,8 +149,8 @@ def set_bunq_oauth_api_key():
         if len(tokens) == 1 and len(tokens[0]) == 64:
             # API key submitted
             try:
-                bunq.install(key, allips=allips, urlroot=request.url_root,
-                             mode="APIkey")
+                config = bunq.install(key, allips=allips,
+                                      urlroot=request.url_root, mode="APIkey")
                 util.sync_permissions(config)
                 bunq.save_config(config)
                 return render_template("message.html", msgtype="success", msg=\

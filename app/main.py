@@ -40,7 +40,7 @@ def home_get():
     accounts = util.get_bunq_accounts_with_permissions(config)
     enableexternal = util.get_external_payment_enabled()
     bunq_oauth = storage.get_value("bunq2IFTTT", "bunq_oauth")
-    if bunq_oauth is not None:
+    if bunq_oauth is not None and bunqkeymode != "APIkey":
         expire = arrow.get(bunq_oauth["timestamp"] + 90*24*3600)
         oauth_expiry = "{} ({})".format(expire.humanize(), expire.isoformat())
     else:
