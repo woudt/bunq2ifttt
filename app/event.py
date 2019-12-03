@@ -761,7 +761,7 @@ def trigger_oauth_expires():
             timezone = data["user"]["timezone"]
 
         transactions = []
-        value = storage.get_value("bunq2IFTTT", "oauth_expires")
+        value = storage.get_value("bunq2IFTTT", "bunq_oauth")
         if value is not None:
             timestamp = value["timestamp"] + 3600 * (90*24 - int(hours))
             if timestamp <= time.time():
@@ -815,17 +815,5 @@ def trigger_oauth_expires_test(limit):
 
 def trigger_oauth_expires_delete(identity):
     """ Delete a specific trigger identity for trigger bunq_oauth_expires """
-    try:
-        value = storage.get_value("bunq2IFTTT", "oauth_expires")
-        newtriggers = []
-        for ident, hours in value["triggers"]:
-            if ident != identity:
-                newtriggers.append((ident, hours))
-        value["triggers"] = newtriggers
-        storage.store_large("bunq2IFTTT", "oauth_expires", value)
-        return ""
-    except Exception:
-        traceback.print_exc()
-        print("[trigger_oauthexp_delete] ERROR: cannot delete trigger")
-        return json.dumps({"errors": [{"message": "Cannot delete trigger"}]}),\
-               400
+    # We don't store trigger identities, so this call can be ignored
+    return ""
