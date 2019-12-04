@@ -271,6 +271,7 @@ def ifttt_test_setup():
                     "bunq_change_card_account": {
                         "card": "x",
                         "account": test_account,
+                        "pin_ordinal": "PRIMARY"
                     },
                 },
                 "actionRecordSkipping": {
@@ -517,6 +518,22 @@ def ifttt_card_options():
     if errmsg:
         return errmsg, 401
     return json.dumps({"data": card.get_bunq_cards()})
+
+
+@app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
+           "pin_ordinal/options", methods=["POST"])
+def ifttt_card_pin_options():
+    """ Option values for the pin ordinal selection"""
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return json.dumps({"data": [{
+        "label": "PRIMARY",
+        "value": "PRIMARY"
+    }, {
+        "label": "SECONDARY",
+        "value": "SECONDARY"
+    }]})
 
 
 ###############################################################################

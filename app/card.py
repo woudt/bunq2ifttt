@@ -67,13 +67,31 @@ def change_card_account():
         return json.dumps({"errors": [{"status": "SKIP", "message": errmsg}]})\
                , 400
 
-    data = {"pin_code_assignment": [{
-        "type": "PRIMARY",
+    if "pin_ordinal" in fields:
+        pinord = fields["pin_ordinal"]
+    else:
+        pinord = "PRIMARY"
+
+    msg = {"pin_code_assignment": [{
+        "type": pinord,
         "monetary_account_id": int(accountid),
     }]}
+
     config = bunq.retrieve_config()
+    data = bunq.get("v1/user/{}/card".format(config["user_id"]), config)
+    for item in data["Response"]:
+        for typ in item:
+            card = item[typ]
+            if str(card["id"]) == str(fields["card"]):
+                for pca in card["pin_code_assignment"]:
+                    if pca["type"] != pinord:
+                        msg["pin_code_assignment"].append({
+                            "type": pca["type"],
+                            "monetary_account_id": pca["monetary_account_id"]
+                        })
+
     res = bunq.session_request_encrypted("PUT", "v1/user/{}/card/{}".format(
-        config["user_id"], fields["card"]), data, config)
+        config["user_id"], fields["card"]), msg, config)
     if "Error" in res:
         print(json.dumps(res))
         errmsg = "Bunq API call failed, see the logs!"
