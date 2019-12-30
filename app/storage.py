@@ -11,6 +11,7 @@ import json
 import os
 import threading
 import time
+import traceback
 
 if os.getenv("GAE_INSTANCE") is not None:
     # Used in Google Appengine, so use Google datastore
@@ -183,6 +184,7 @@ def remove(kind, index):
         except OSError:
             pass
 
+# pylint: disable=bare-except
 def seen(kind, index):
     """ Write a 'seen' object with a transaction/locking to ensure
         an object is only seen once. Returns True if seen before,
@@ -190,15 +192,15 @@ def seen(kind, index):
     index = str(index)
     result = False
     if USE_GOOGLE_DATASTORE:
-        with DSCLIENT.transaction():
-            seenkey = DSCLIENT.key(kind, index)
-            entity = DSCLIENT.get(seenkey)
-            if entity is not None:
-                result = True
-            else:
-                entity = datastore.Entity(key=seenkey)
-                entity["timestamp"] = int(time.time())
-                DSCLIENT.put(entity)
+        retries = 2
+        while retries > 0:
+            retries -= 1
+            try:
+                result = seen_google(kind, index)
+                break
+            except:
+                traceback.print_exc()
+                print("Retries left: ", retries)
     else:
         LOCK.acquire()
         fname = "db" + os.sep + str(kind) + "." + str(index)
@@ -209,6 +211,19 @@ def seen(kind, index):
                 fil.write(json.dumps({"timestamp": int(time.time())}))
         LOCK.release()
     return result
+# pylint: enable=bare-except
+
+def seen_google(kind, index):
+    """ Helper method for the seen method above, used with google datastore """
+    with DSCLIENT.transaction():
+        seenkey = DSCLIENT.key(kind, index)
+        entity = DSCLIENT.get(seenkey)
+        if entity is not None:
+            return True
+        entity = datastore.Entity(key=seenkey)
+        entity["timestamp"] = int(time.time())
+        DSCLIENT.put(entity)
+        return False
 
 def clean_seen(kind):
     """ Clean up the seen index by removing all older than 15 minutes """
