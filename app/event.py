@@ -42,7 +42,8 @@ def bunq_callback_request():
             return 200
 
         iban = obj["alias"]["iban"]
-        if not util.is_valid_bunq_account(iban, "Request"):
+        valid, accname = util.check_valid_bunq_account(iban, "Request")
+        if not valid:
             print("[bunqcb_request] trigger not enabled for this account")
             return 200
 
@@ -51,6 +52,7 @@ def bunq_callback_request():
             "date": arrow.get(obj["created"]).format("YYYY-MM-DD"),
             "amount": obj["amount_inquired"]["value"],
             "account": iban,
+            "account_name": accname,
             "counterparty_account": counterparty_account(obj),
             "counterparty_name": obj["counterparty_alias"]["display_name"],
             "description": obj["description"],
@@ -108,7 +110,8 @@ def bunq_callback_mutation():
             return 200
 
         iban = payment["alias"]["iban"]
-        if not util.is_valid_bunq_account(iban, "Mutation"):
+        valid, accname = util.check_valid_bunq_account(iban, "Mutation")
+        if not valid:
             print("[bunqcb_mutation] trigger not enabled for this account")
             return 200
 
@@ -119,6 +122,7 @@ def bunq_callback_mutation():
             "amount": payment["amount"]["value"],
             "balance": payment["balance_after_mutation"]["value"],
             "account": iban,
+            "account_name": accname,
             "counterparty_account": counterparty_account(payment),
             "counterparty_name": payment["counterparty_alias"]["display_name"],
             "description": payment["description"],
@@ -425,6 +429,7 @@ def trigger_mutation_test(limit):
         "amount": "1.01",
         "balance": "15.15",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "NL11BANK1111111111",
         "counterparty_name": "John Doe",
         "description": "Here you are",
@@ -440,6 +445,7 @@ def trigger_mutation_test(limit):
         "amount": "2.02",
         "balance": "14.14",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "NL22BANK2222222222",
         "counterparty_name": "Jane Doe",
         "description": "What I owe you",
@@ -455,6 +461,7 @@ def trigger_mutation_test(limit):
         "amount": "-3.03",
         "balance": "12.12",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "",
         "counterparty_name": "ACME Store Inc.",
         "description": "POS transaction 1234567890",
@@ -561,6 +568,7 @@ def trigger_balance_test(limit):
     result = [{
         "created_at": "2018-01-05T11:25:15+00:00",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "balance": "15.15",
         "meta": {
             "id": "1",
@@ -569,6 +577,7 @@ def trigger_balance_test(limit):
     }, {
         "created_at": "2014-10-24T09:03:34+00:00",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "balance": "14.14",
         "meta": {
             "id": "2",
@@ -577,6 +586,7 @@ def trigger_balance_test(limit):
     }, {
         "created_at": "2008-05-30T04:20:12+00:00",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "balance": "12.12",
         "meta": {
             "id": "3",
@@ -678,6 +688,7 @@ def trigger_request_test(limit):
         "created_at": "2018-01-05T11:25:15+00:00",
         "amount": "1.01",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "NL11BANK1111111111",
         "counterparty_name": "John Doe",
         "description": "Here you are",
@@ -690,6 +701,7 @@ def trigger_request_test(limit):
         "created_at": "2014-10-24T09:03:34+00:00",
         "amount": "2.02",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "NL22BANK2222222222",
         "counterparty_name": "Jane Doe",
         "description": "What I owe you",
@@ -702,6 +714,7 @@ def trigger_request_test(limit):
         "created_at": "2008-05-30T04:20:12+00:00",
         "amount": "-3.03",
         "account": "NL42BUNQ0123456789",
+        "account_name": "Test account",
         "counterparty_account": "",
         "counterparty_name": "ACME Store Inc.",
         "description": "POS transaction 1234567890",

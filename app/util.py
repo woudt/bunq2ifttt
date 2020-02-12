@@ -48,13 +48,13 @@ def save_ifttt_service_key(value):
     storage.store("bunq2IFTTT", "ifttt_service_key", {"value": value})
 
 
-def is_valid_bunq_account(iban, permission=None, config=None):
+def check_valid_bunq_account(iban, permission=None, config=None):
     """ Return whether the account is valid for the given permission """
     accs = get_bunq_accounts(permission, config)
     for acc in accs:
         if acc["iban"] == iban:
-            return True
-    return False
+            return True, acc["description"]
+    return False, ""
 
 def get_bunq_accounts(permission=None, config=None):
     """ Return the list of accounts for the given permission """
