@@ -30,15 +30,15 @@
                     {% if accounts %}
                     {% for acc in accounts %}{{ acc.iban }} {{ acc.description }}<br>
                     <table>
-                    <tr><td>- Internal payment:</td><td>
+                    <tr><td>- Internal payment action:</td><td>
                       {% if acc.perms.Internal %}enabled{% else %}disabled{% endif %}
                       [<a href="/account_change_permission?permission=Internal&iban={{ acc.iban }}&value={% if acc.perms.Internal %}false{% else %}true{% endif %}">change</a>]
                     </td></tr>
-                    <tr><td>- Draft payment:</td><td>
+                    <tr><td>- Draft payment action:</td><td>
                       {% if acc.perms.Draft %}enabled{% else %}disabled{% endif %}
                       [<a href="/account_change_permission?permission=Draft&iban={{ acc.iban }}&value={% if acc.perms.Draft %}false{% else %}true{% endif %}">change</a>]
                     </td></tr>
-                    <tr><td>- External payment:</td><td>
+                    <tr><td>- External payment action:</td><td>
                       {% if enableexternal %}
                       {% if acc.perms.External %}enabled{% else %}disabled{% endif %}
                       [<a href="/account_change_permission?permission=External&iban={{ acc.iban }}&value={% if acc.perms.External %}false{% else %}true{% endif %}">change</a>]
@@ -46,9 +46,13 @@
                       [globally disabled]
                       {% endif %}
                     </td></tr>
-                    <tr><td>- Change card account:</td><td>
+                    <tr><td>- Change card account action:</td><td>
                       {% if acc.perms.Card %}enabled{% else %}disabled{% endif %}
                       [<a href="/account_change_permission?permission=Card&iban={{ acc.iban }}&value={% if acc.perms.Card %}false{% else %}true{% endif %}">change</a>]
+                    </td></tr>
+                    <tr><td>- Payment request action:</td><td>
+                      {% if acc.perms.PaymentRequest %}enabled{% else %}disabled{% endif %}
+                      [<a href="/account_change_permission?permission=PaymentRequest&iban={{ acc.iban }}&value={% if acc.perms.Card %}false{% else %}true{% endif %}">change</a>]
                     </td></tr>
                     <tr><td>- Mutation/Balance triggers:</td><td>
                       {% if acc.perms.Mutation %}enabled{% else %}disabled{% endif %}

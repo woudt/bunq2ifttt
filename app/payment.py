@@ -61,7 +61,7 @@ def create_payment_message(internal, fields, config):
     # create the payment message
     payment = {
         "amount": {
-            "value": str(amount),
+            "value": "{:.2f}".format(amount),
             "currency": "EUR"
         },
         "counterparty_alias": {

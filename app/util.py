@@ -108,6 +108,7 @@ def sync_permissions(config):
         "Mutation": True,
         "Request": True,
         "Card": True,
+        "PaymentRequest": True,
     }
     for iban in perms:
         for perm in perms[iban]:

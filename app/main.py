@@ -14,6 +14,7 @@ import bunq
 import card
 import event
 import payment
+import paymentrequest
 import storage
 import util
 
@@ -273,6 +274,12 @@ def ifttt_test_setup():
                         "account": test_account,
                         "pin_ordinal": "PRIMARY"
                     },
+                    "bunq_request_inquiry": {
+                        "amount": "1.23",
+                        "account": test_account,
+                        "phone_email_iban": test_account,
+                        "description": "x",
+                    }
                 },
                 "actionRecordSkipping": {
                     "bunq_internal_payment": {
@@ -479,6 +486,12 @@ def ifttt_account_options_change_card():
     """ Option values for change card account selection"""
     return ifttt_account_options(False, "Card")
 
+@app.route("/ifttt/v1/actions/bunq_request_inquiry/fields/"\
+           "account/options", methods=["POST"])
+def ifttt_account_options_request_inquiry():
+    """ Option values for request inquiry source account selection"""
+    return ifttt_account_options(False, "PaymentRequest")
+
 def ifttt_account_options(include_any, enable_key):
     """ Option values for account selection """
     errmsg = check_ifttt_service_key()
@@ -666,6 +679,19 @@ def ifttt_change_card_account():
     if errmsg:
         return errmsg, 401
     return card.change_card_account()
+
+
+###############################################################################
+# Request inquiry action endpoints
+###############################################################################
+
+@app.route("/ifttt/v1/actions/bunq_request_inquiry", methods=["POST"])
+def ifttt_request_inquiry():
+    """ Execute a request inquiry action """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return paymentrequest.request_inquiry()
 
 
 ###############################################################################
