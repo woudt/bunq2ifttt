@@ -433,7 +433,7 @@ def ifttt_type_options(first):
         {"value": "ONLINE", "label": "ONLINE (all subtypes)"},
         {"value": "ONLINE_IDEAL", "label": "ONLINE_IDEAL"},
         {"value": "ONLINE_SOFORT", "label": "ONLINE_SOFORT"},
-        {"value": "TRANSFER", "label": "TRANSFER (all subtypes"},
+        {"value": "TRANSFER", "label": "TRANSFER (all subtypes)"},
         {"value": "TRANSFER_REGULAR", "label": "TRANSFER_REGULAR"},
         {"value": "TRANSFER_REQUEST", "label": "TRANSFER_REQUEST"},
         {"value": "TRANSFER_SAVINGS", "label": "TRANSFER_SAVINGS"},

@@ -247,13 +247,13 @@ def check_types(item, fields):
     """ Check the mutation type fields for a trigger """
     result = True
     if "type" in fields and fields["type"] != "ANY":
-        result &= item["type"].startswith(fields["type"])
+        result = item["type"].startswith(fields["type"])
     if "type_2" in fields and fields["type_2"] != "---":
-        result &= item["type"].startswith(fields["type_2"])
+        result |= item["type"].startswith(fields["type_2"])
     if "type_3" in fields and fields["type_3"] != "---":
-        result &= item["type"].startswith(fields["type_3"])
+        result |= item["type"].startswith(fields["type_3"])
     if "type_4" in fields and fields["type_4"] != "---":
-        result &= item["type"].startswith(fields["type_4"])
+        result |= item["type"].startswith(fields["type_4"])
     return result
 
 def check_comparators(item, fields):
