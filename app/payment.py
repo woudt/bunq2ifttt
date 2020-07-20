@@ -152,6 +152,7 @@ def ifttt_bunq_payment(internal, draft):
 
 def ifttt_bunq_topup(internal, draft):
     """ Execute a topup, internal payment """
+    util.update_bunq_accounts()
     config = bunq.retrieve_config()
     data = request.get_json()
     print("[action_payment] input: {}".format(json.dumps(data)))
@@ -174,7 +175,13 @@ def ifttt_bunq_topup(internal, draft):
     for acc in config["accounts"]:
         if acc["iban"] == fields["target_account"]:
             balance = acc["balance"]
-            fields["amount"] = fields["amount"] - balance
+            # check balance and amount
+            try:
+                fields["amount"] = float(fields["amount"]) - float(balance)
+            except ValueError:
+                errmsg = f"Invalid amount: {fields['amount']} or balance: {balance}"
+                print("[action_payment] ERROR: "+errmsg)
+                return {"errors": [{"status": "SKIP", "message": errmsg}]}
 
     msg = create_payment_message(internal, fields, config)
     if "errors" in msg or "data" in msg: # error or test payment

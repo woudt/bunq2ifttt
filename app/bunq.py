@@ -163,7 +163,6 @@ def retrieve_accounts(config):
     config["accounts"] = []
     result = get("v1/user/{}/monetary-account".format(config["user_id"]),
                  config)
-    print(result)
     for res in result["Response"]:
         for typ in res:
             acc = res[typ]
@@ -178,6 +177,7 @@ def retrieve_accounts(config):
                        "name": name,
                        "type": type_url,
                        "id": acc["id"],
+                       "balance": acc["balance"]["value"],
                        "description": acc["description"]}
             config["accounts"].append(accinfo)
 
