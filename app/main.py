@@ -498,6 +498,12 @@ def ifttt_account_options_topup_source():
     """ Option values for topup source account selection"""
     return ifttt_account_options(False, "Internal")
 
+@app.route("/ifttt/v1/actions/bunq_topup/fields/"\
+           "target_account/options", methods=["POST"])
+def ifttt_account_options_topup_target():
+    """ Option values for topup target account selection"""
+    return ifttt_account_options(False, None)
+
 @app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
            "account/options", methods=["POST"])
 def ifttt_account_options_change_card():
