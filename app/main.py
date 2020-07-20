@@ -269,6 +269,12 @@ def ifttt_test_setup():
                         "target_name": "John Doe",
                         "description": "x",
                     },
+                   "bunq_topup": {
+                        "amount": "1.23",
+                        "source_account": test_account,
+                        "target_account": test_account,
+                        "description": "x",
+                    },
                     "bunq_change_card_account": {
                         "card": "x",
                         "account": test_account,
@@ -300,6 +306,12 @@ def ifttt_test_setup():
                         "source_account": test_account,
                         "target_account": test_account,
                         "target_name": "John Doe",
+                        "description": "x",
+                    },
+                    "bunq_topup": {
+                        "amount": "-1.23",
+                        "source_account": test_account,
+                        "target_account": test_account,
                         "description": "x",
                     },
                 }
@@ -479,6 +491,12 @@ def ifttt_account_options_draft():
 def ifttt_account_options_external():
     """ Option values for draft payment source account selection"""
     return ifttt_account_options(False, "External")
+
+@app.route("/ifttt/v1/actions/bunq_topup/fields/"\
+           "source_account/options", methods=["POST"])
+def ifttt_account_options_topup_source():
+    """ Option values for topup source account selection"""
+    return ifttt_account_options(False, "Internal")
 
 @app.route("/ifttt/v1/actions/bunq_change_card_account/fields/"\
            "account/options", methods=["POST"])
@@ -667,6 +685,13 @@ def ifttt_draft_payment():
         return errmsg, 401
     return payment.ifttt_bunq_payment(internal=False, draft=True)
 
+@app.route("/ifttt/v1/actions/bunq_topup", methods=["POST"])
+def ifttt_topup():
+    """ Execute an top up action """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return payment.ifttt_bunq_topup(internal=True, draft=False)
 
 ###############################################################################
 # Change card account action endpoints
