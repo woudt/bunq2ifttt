@@ -148,3 +148,66 @@ def ifttt_bunq_payment(internal, draft):
 
     return json.dumps({"data": [{
         "id": str(result["Response"][0]["Id"]["id"])}]})
+
+
+def ifttt_bunq_topup(internal, draft):
+    """ Execute a topup, internal payment """
+    config = bunq.retrieve_config()
+    data = request.get_json()
+    print("[action_payment] input: {}".format(json.dumps(data)))
+
+    errmsg = None
+    if not internal and not draft and not util.get_external_payment_enabled():
+        errmsg = "external payments disabled"
+    if "actionFields" not in data:
+        errmsg = "missing actionFields"
+
+    if errmsg:
+        print("[action_payment] ERROR: "+errmsg)
+        return json.dumps({"errors": [{"status": "SKIP", "message": errmsg}]})\
+               , 400
+
+    # get the payment message
+    fields = data["actionFields"]
+
+    # get the target account balance
+    for acc in config["accounts"]:
+        if acc["iban"] == fields["target_account"]:
+            balance = acc["balance"]
+            fields["amount"] = fields["amount"] - balance
+
+    msg = create_payment_message(internal, fields, config)
+    if "errors" in msg or "data" in msg: # error or test payment
+        return json.dumps(msg), 400 if "errors" in msg else 200
+
+    # find the source account id
+    source_accid, enabled = check_source_account(internal, draft, config,
+                                                 fields["source_account"])
+    if source_accid is None:
+        errmsg = "unknown source account: "+fields["source_account"]
+    if not enabled:
+        errmsg = "Payment type not enabled for account: "+\
+                 fields["source_account"]
+
+    if errmsg:
+        print("[action_payment] ERROR: "+errmsg)
+        return json.dumps({"errors": [{"status": "SKIP", "message": errmsg}]})\
+               , 400
+
+    # execute the payment
+    if draft:
+        msg = {"number_of_required_accepts": 1, "entries": [msg]}
+        result = bunq.post("v1/user/{}/monetary-account/{}/draft-payment"
+                           .format(config["user_id"], source_accid), msg)
+    else:
+        result = bunq.post("v1/user/{}/monetary-account/{}/payment"
+                           .format(config["user_id"], source_accid), msg)
+    print(result)
+    if "Error" in result:
+        return json.dumps({"errors": [{
+            "status": "SKIP",
+            "message": result["Error"][0]["error_description"]
+        }]}), 400
+
+    return json.dumps({"data": [{
+        "id": str(result["Response"][0]["Id"]["id"])}]})
