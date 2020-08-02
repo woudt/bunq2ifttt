@@ -180,6 +180,24 @@ def retrieve_accounts(config):
                        "description": acc["description"]}
             config["accounts"].append(accinfo)
 
+def retrieve_account_balances(config):
+    """ Retrieve the balances of accounts of the user """
+    print("[bunq] Retrieving account balances...")
+    result = get("v1/user/{}/monetary-account".format(config["user_id"]),
+                 config)
+    response = {}
+    for res in result["Response"]:
+        for typ in res:
+            acc = res[typ]
+            type_url = _TYPE_TRANSLATION[typ]
+        if acc["status"] == "ACTIVE":
+            iban = None
+            for alias in acc["alias"]:
+                if alias["type"] == "IBAN":
+                    iban = alias["value"]
+            response[iban] = float(acc["balance"]["value"])
+    return response
+
 
 def register_callback(config, urlroot):
     """ Register the callbacks on the account """

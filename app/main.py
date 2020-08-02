@@ -16,6 +16,7 @@ import event
 import payment
 import paymentrequest
 import storage
+import targetbalance
 import util
 
 # pylint: disable=invalid-name
@@ -279,7 +280,25 @@ def ifttt_test_setup():
                         "account": test_account,
                         "phone_email_iban": test_account,
                         "description": "x",
-                    }
+                    },
+                    "bunq_target_balance_internal": {
+                        "account": test_account,
+                        "amount": "123.45",
+                        "other_account": test_account,
+                        "direction": "top up or skim",
+                        "payment_type": "DIRECT",
+                        "description": "x",
+                    },
+                    "bunq_target_balance_external": {
+                        "account": test_account,
+                        "amount": "123.45",
+                        "direction": "top up or skim",
+                        "payment_account": test_account,
+                        "payment_name": "John Doe",
+                        "payment_description": "x",
+                        "request_phone_email_iban": test_account,
+                        "request_description": "x",
+                    },
                 },
                 "actionRecordSkipping": {
                     "bunq_internal_payment": {
@@ -301,6 +320,24 @@ def ifttt_test_setup():
                         "target_account": test_account,
                         "target_name": "John Doe",
                         "description": "x",
+                    },
+                    "bunq_target_balance_internal": {
+                        "account": test_account,
+                        "amount": "-123.45",
+                        "other_account": test_account,
+                        "direction": "top up or skim",
+                        "payment_type": "DIRECT",
+                        "description": "x",
+                    },
+                    "bunq_target_balance_external": {
+                        "account": test_account,
+                        "amount": "-123.45",
+                        "direction": "top up or skim",
+                        "payment_account": test_account,
+                        "payment_name": "John Doe",
+                        "payment_description": "x",
+                        "request_phone_email_iban": test_account,
+                        "request_description": "x",
                     },
                 }
             }
@@ -492,6 +529,24 @@ def ifttt_account_options_request_inquiry():
     """ Option values for request inquiry source account selection"""
     return ifttt_account_options(False, "PaymentRequest")
 
+@app.route("/ifttt/v1/actions/bunq_target_balance_internal/fields/"\
+           "account/options", methods=["POST"])
+def ifttt_account_options_target_balance_internal():
+    """ Option values for internal target balance account selection"""
+    return ifttt_account_options(False, None)
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_internal/fields/"\
+           "other_account/options", methods=["POST"])
+def ifttt_account_options_target_balance_internal_other():
+    """ Option values for internal target balance other account selection"""
+    return ifttt_account_options(False, None)
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_external/fields/"\
+           "account/options", methods=["POST"])
+def ifttt_account_options_target_balance_external():
+    """ Option values for external target balance account selection"""
+    return ifttt_account_options(False, None)
+
 def ifttt_account_options(include_any, enable_key):
     """ Option values for account selection """
     errmsg = check_ifttt_service_key()
@@ -546,6 +601,43 @@ def ifttt_card_pin_options():
     }, {
         "label": "SECONDARY",
         "value": "SECONDARY"
+    }]})
+
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_internal/fields/"\
+           "direction/options", methods=["POST"])
+@app.route("/ifttt/v1/actions/bunq_target_balance_external/fields/"\
+           "direction/options", methods=["POST"])
+def ifttt_target_balance_direction_options():
+    """ Option values for the direction field in the target balance actions"""
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return json.dumps({"data": [{
+        "value": "top up or skim",
+        "label": "Both - add/top up or remove/skim money depending on balance"
+    }, {
+        "value": "skim",
+        "label": "Skim only - only remove, don't add money"
+    }, {
+        "value": "top up",
+        "label": "Top up only - only add, don't remove money"
+    }]})
+
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_internal/fields/"\
+           "payment_type/options", methods=["POST"])
+def ifttt_target_balance_payment_type_options():
+    """ Option values for the payment type in the target balance action"""
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return json.dumps({"data": [{
+        "value": "DIRECT",
+        "label": "Direct payment - no approval needed"
+    }, {
+        "value": "DRAFT",
+        "label": "Draft payment - requiring approval in the bunq app"
     }]})
 
 
@@ -666,6 +758,27 @@ def ifttt_draft_payment():
     if errmsg:
         return errmsg, 401
     return payment.ifttt_bunq_payment(internal=False, draft=True)
+
+
+###############################################################################
+# Target balance action endpoints
+###############################################################################
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_internal", methods=["POST"])
+def ifttt_target_balance_internal():
+    """ Execute a target balance internal action """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return targetbalance.target_balance_internal()
+
+@app.route("/ifttt/v1/actions/bunq_target_balance_external", methods=["POST"])
+def ifttt_target_balance_external():
+    """ Execute a target balance external action """
+    errmsg = check_ifttt_service_key()
+    if errmsg:
+        return errmsg, 401
+    return targetbalance.target_balance_external()
 
 
 ###############################################################################
